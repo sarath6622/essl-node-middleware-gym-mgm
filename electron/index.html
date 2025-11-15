@@ -33,51 +33,82 @@
     <main class="main-content">
       <!-- Left Panel - Device Info -->
       <aside class="sidebar">
+        <!-- Statistics (Top) -->
         <div class="card">
           <h2 class="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-              <line x1="6" y1="6" x2="6.01" y2="6"/>
-              <line x1="6" y1="18" x2="6.01" y2="18"/>
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
-            Device Information
+            Statistics
           </h2>
-          <div class="device-info">
-            <div class="info-row">
-              <span class="label">Status:</span>
-              <span class="value" id="deviceStatus">Not Connected</span>
+          <div class="stats">
+            <div class="stat-item">
+              <div class="stat-value" id="totalEvents">0</div>
+              <div class="stat-label">Total Events</div>
             </div>
-            <div class="info-row">
-              <span class="label">IP Address:</span>
-              <span class="value" id="deviceIP">-</span>
+            <div class="stat-item">
+              <div class="stat-value" id="todayEvents">0</div>
+              <div class="stat-label">Today</div>
             </div>
-            <div class="info-row">
-              <span class="label">Port:</span>
-              <span class="value" id="devicePort">-</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Mode:</span>
-              <span class="value" id="deviceMode">-</span>
-            </div>
-          </div>
-          <div class="action-buttons">
-            <button class="btn btn-primary" id="scanBtn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.35-4.35"/>
-              </svg>
-              Scan Network
-            </button>
-            <button class="btn btn-secondary" id="reconnectBtn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-              </svg>
-              Reconnect
-            </button>
           </div>
         </div>
 
+        <!-- System Status Checklist -->
+        <div class="card">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 11 12 14 22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            System Status
+          </h2>
+          <div class="status-checklist">
+            <div class="checklist-item" id="checkServer">
+              <span class="check-icon">⏳</span>
+              <span class="check-label">Server Starting</span>
+            </div>
+            <div class="checklist-item" id="checkDatabase">
+              <span class="check-icon">⏳</span>
+              <span class="check-label">Database Connection</span>
+            </div>
+            <div class="checklist-item" id="checkDevice">
+              <span class="check-icon">⏳</span>
+              <span class="check-label">Device Discovery</span>
+            </div>
+            <div class="checklist-item" id="checkSocket">
+              <span class="check-icon">⏳</span>
+              <span class="check-label">Real-time Connection</span>
+            </div>
+          </div>
+          <div class="ready-status" id="readyStatus">
+            <div class="ready-indicator waiting">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 6v6l4 2"/>
+              </svg>
+              <span>Initializing System...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Logs -->
+        <div class="card">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+              <polyline points="13 2 13 9 20 9"/>
+            </svg>
+            System Logs
+          </h2>
+          <div class="logs-container" id="logsContainer">
+            <div class="log-item log-info">
+              <span class="log-prefix">ℹ️</span>
+              <span class="log-text">Waiting for system to start...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Configuration -->
         <div class="card">
           <h2 class="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -99,41 +130,29 @@
               <span class="label">Server Port:</span>
               <span class="value" id="serverPort">-</span>
             </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2 class="card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-              <polyline points="13 2 13 9 20 9"/>
-            </svg>
-            System Logs
-          </h2>
-          <div class="logs-container" id="logsContainer">
-            <div class="log-item log-info">
-              <span class="log-prefix">ℹ️</span>
-              <span class="log-text">Waiting for system to start...</span>
+            <div class="info-row">
+              <span class="label">Device IP:</span>
+              <span class="value" id="deviceIP">-</span>
+            </div>
+            <div class="info-row">
+              <span class="label">Device Port:</span>
+              <span class="value" id="devicePort">-</span>
             </div>
           </div>
-        </div>
-        
-        <div class="card">
-          <h2 class="card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            Statistics
-          </h2>
-          <div class="stats">
-            <div class="stat-item">
-              <div class="stat-value" id="totalEvents">0</div>
-              <div class="stat-label">Total Events</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value" id="todayEvents">0</div>
-              <div class="stat-label">Today</div>
-            </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" id="scanBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+              </svg>
+              Scan Network
+            </button>
+            <button class="btn btn-secondary" id="reconnectBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+              </svg>
+              Reconnect
+            </button>
           </div>
         </div>
       </aside>

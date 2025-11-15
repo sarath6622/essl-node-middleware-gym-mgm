@@ -366,6 +366,119 @@ body {
   letter-spacing: 0.05em;
 }
 
+/* System Status Checklist */
+.status-checklist {
+  margin-bottom: 1rem;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.checklist-item .check-icon {
+  font-size: 1.25rem;
+  min-width: 24px;
+  text-align: center;
+}
+
+.checklist-item .check-label {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.checklist-item.pending .check-icon::after {
+  content: '⏳';
+}
+
+.checklist-item.success {
+  background: var(--success-bg);
+  border-left: 3px solid var(--success);
+}
+
+.checklist-item.success .check-icon::after {
+  content: '✅';
+}
+
+.checklist-item.success .check-label {
+  color: var(--success);
+}
+
+.checklist-item.error {
+  background: var(--error-bg);
+  border-left: 3px solid var(--error);
+}
+
+.checklist-item.error .check-icon::after {
+  content: '❌';
+}
+
+.checklist-item.error .check-label {
+  color: var(--error);
+}
+
+/* Ready Status Indicator */
+.ready-status {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  text-align: center;
+}
+
+.ready-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.ready-indicator svg {
+  animation: spin 2s linear infinite;
+}
+
+.ready-indicator.waiting {
+  color: var(--warning);
+  background: var(--warning-bg);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.ready-indicator.ready {
+  color: var(--success);
+  background: var(--success-bg);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.ready-indicator.ready svg {
+  animation: none;
+}
+
+.ready-indicator.error {
+  color: var(--error);
+  background: var(--error-bg);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Content Area */
 .content {
   flex: 1;

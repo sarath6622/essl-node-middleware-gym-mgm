@@ -3,12 +3,12 @@ const DEVICE_CONFIG = {
   useMockDevice: false,
 
   // Auto-discovery settings
-  autoDiscoverDevice: true, // <-- Set to true to automatically scan for device on startup
+  autoDiscoverDevice: true, // <-- Set to false to use static IP (faster, more reliable)
   autoDiscoveryRetries: 1, // <-- Just 1 attempt for quick scan
   autoDiscoveryRetryDelay: 3000, // <-- Reduced to 3 seconds between retries
 
   // Real device IP configuration (only used if useMockDevice is false and autoDiscoverDevice is false)
-  ip: "192.168.1.74", // <-- Replace with actual device IP from your WiFi router's DHCP list
+  ip: "192.168.1.74", // <-- Static IP - device confirmed reachable via Test-NetConnection
   port: 4370,
   timeout: 10000,
   inactivityTimeout: 4000,

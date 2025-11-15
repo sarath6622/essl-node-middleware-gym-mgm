@@ -5,12 +5,18 @@ let totalEvents = 0;
 let todayEvents = 0;
 let socket = null;
 
+// System status tracking
+let systemStatus = {
+  server: false,
+  database: false,
+  device: false,
+  socket: false
+};
+
 // DOM Elements
 const connectionStatus = document.getElementById('connectionStatus');
-const deviceStatus = document.getElementById('deviceStatus');
 const deviceIP = document.getElementById('deviceIP');
 const devicePort = document.getElementById('devicePort');
-const deviceMode = document.getElementById('deviceMode');
 const autoDiscovery = document.getElementById('autoDiscovery');
 const mockMode = document.getElementById('mockMode');
 const serverPort = document.getElementById('serverPort');
@@ -25,6 +31,13 @@ const clearBtn = document.getElementById('clearBtn');
 const devicesModal = document.getElementById('devicesModal');
 const modalClose = document.getElementById('modalClose');
 const modalBody = document.getElementById('modalBody');
+
+// Status checklist elements
+const checkServer = document.getElementById('checkServer');
+const checkDatabase = document.getElementById('checkDatabase');
+const checkDevice = document.getElementById('checkDevice');
+const checkSocket = document.getElementById('checkSocket');
+const readyStatus = document.getElementById('readyStatus');
 
 // Initialize
 async function init() {
@@ -87,6 +100,7 @@ function setupSocketIO() {
     socket.on('connect', () => {
       console.log('✅ Socket.IO connected to server');
       footerStatus.textContent = 'Socket.IO connected - waiting for device connection';
+      updateSystemStatus('socket', true);
     });
     
     socket.on('connect_error', (error) => {
@@ -173,6 +187,8 @@ function setupIPCListeners() {
   window.electronAPI.onServerStarted((data) => {
     serverPort.textContent = data.port;
     footerStatus.textContent = `Server running on port ${data.port}`;
+    updateSystemStatus('server', true);
+    updateSystemStatus('database', true); // Firebase initializes with server
   });
   
   window.electronAPI.onScanStarted(() => {
@@ -187,9 +203,9 @@ function setupIPCListeners() {
   
   window.electronAPI.onDeviceNotFound((data) => {
     updateStatus('No device found', 'disconnected');
-    deviceStatus.textContent = 'Not Found';
     deviceIP.textContent = '-';
     footerStatus.textContent = 'No device found on network';
+    updateSystemStatus('device', 'error');
     
     // Show suggestions
     if (data && data.suggestions) {
@@ -218,16 +234,16 @@ function setupIPCListeners() {
   
   window.electronAPI.onDeviceConnected((data) => {
     updateStatus('Connected', 'connected');
-    deviceStatus.textContent = 'Connected';
     deviceIP.textContent = data.ip;
     footerStatus.textContent = `Connected to device at ${data.ip}`;
+    updateSystemStatus('device', true);
   });
-  
+
   window.electronAPI.onConnectionFailed((data) => {
     updateStatus('Connection failed', 'disconnected');
-    deviceStatus.textContent = 'Failed';
     deviceIP.textContent = data.ip || '-';
     footerStatus.textContent = `Failed to connect to ${data.ip || 'device'}`;
+    updateSystemStatus('device', 'error');
     
     // Show suggestions
     if (data && data.suggestions) {
@@ -583,83 +599,118 @@ function speakWelcome(userName, membershipStatus, membershipEndDate) {
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
 
+    console.log('Speaking welcome for:', { userName, membershipStatus, membershipEndDate });
+
+    // Get time-based greeting
+    const hour = new Date().getHours();
+    let greeting;
+    if (hour < 12) {
+      greeting = 'Good morning';
+    } else if (hour < 17) {
+      greeting = 'Good afternoon';
+    } else {
+      greeting = 'Good evening';
+    }
+
     let message;
+    let isExpired = false;
+    let daysRemaining = null;
+    let daysExpired = null;
+
+    // Check membership expiration FIRST (regardless of status field)
+    if (membershipEndDate) {
+      const endDate = new Date(membershipEndDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day
+      endDate.setHours(0, 0, 0, 0);
+
+      daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+
+      if (daysRemaining < 0) {
+        isExpired = true;
+        daysExpired = Math.abs(daysRemaining);
+      }
+    }
+
+    // Build message based on ACTUAL expiration status (not membershipStatus field)
     if (membershipStatus === 'unknown') {
       message = `Attention. Unknown user detected. ID ${userName.split('ID: ')[1] || 'not found'}`;
-    } else if (membershipStatus === 'active' || membershipStatus === 'present') {
-      message = `Welcome ${userName}`;
-
-      // Add expiration information if membership end date is available
-      if (membershipEndDate) {
-        const endDate = new Date(membershipEndDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Reset time to start of day
-        endDate.setHours(0, 0, 0, 0);
-
-        const daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-
-        if (daysRemaining > 0 && daysRemaining <= 30) {
-          // Within 30 days - notify about upcoming expiration
-          if (daysRemaining === 1) {
-            message += `. Your membership expires tomorrow.`;
-          } else if (daysRemaining <= 7) {
-            message += `. Your membership expires in ${daysRemaining} days.`;
-          } else {
-            message += `. Your membership expires in ${daysRemaining} days.`;
-          }
-        } else if (daysRemaining === 0) {
-          message += `. Your membership expires today.`;
+    } else if (isExpired) {
+      // EXPIRED - membership end date is in the past
+      if (daysExpired > 0) {
+        if (daysExpired === 1) {
+          message = `${greeting} ${userName}. Your membership has expired yesterday.`;
+        } else {
+          message = `${greeting} ${userName}. Your membership has expired ${daysExpired} days ago.`;
         }
+      } else {
+        message = `${greeting} ${userName}. Your membership has expired.`;
       }
     } else {
-      // Inactive or expired membership
-      message = `Hello ${userName}. Your membership has expired.`;
+      // ACTIVE or NO END DATE - welcome normally
+      message = `${greeting} ${userName}`;
 
-      // Calculate how many days ago it expired
-      if (membershipEndDate) {
-        const endDate = new Date(membershipEndDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        endDate.setHours(0, 0, 0, 0);
-
-        const daysExpired = Math.ceil((today - endDate) / (1000 * 60 * 60 * 24));
-
-        if (daysExpired > 0) {
-          if (daysExpired === 1) {
-            message += ` It expired yesterday.`;
-          } else {
-            message += ` It expired ${daysExpired} days ago.`;
-          }
+      // Add expiration warning if within 30 days
+      if (daysRemaining !== null) {
+        if (daysRemaining === 0) {
+          message += `. Your membership expires today.`;
+        } else if (daysRemaining === 1) {
+          message += `. Your membership expires tomorrow.`;
+        } else if (daysRemaining > 0 && daysRemaining <= 30) {
+          message += `. Your membership expires in ${daysRemaining} days.`;
         }
       }
     }
 
-    const utterance = new SpeechSynthesisUtterance(message);
-    utterance.rate = 0.95; // Slightly slower for more natural speech
-    utterance.pitch = 1.1; // Slightly higher pitch for female voice
-    utterance.volume = 1.0; // Full volume
+    console.log('Speech message:', message);
 
-    // Select the most natural-sounding female voice
+    // Function to speak with loaded voices
+    const speakMessage = () => {
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.rate = 0.95; // Slightly slower for more natural speech
+      utterance.pitch = 1.1; // Slightly higher pitch for female voice
+      utterance.volume = 1.0; // Full volume
+
+      // Select the most natural-sounding female voice
+      const voices = window.speechSynthesis.getVoices();
+      console.log('Available voices:', voices.length);
+
+      // Priority order for natural female voices:
+      // 1. Microsoft voices (Zira, Aria - very natural on Windows)
+      // 2. Google voices (high quality)
+      // 3. Any voice with "Female" in the name
+      // 4. Default English voice
+      const preferredVoice =
+        voices.find(v => v.lang.startsWith('en') && (v.name.includes('Zira') || v.name.includes('Aria'))) ||
+        voices.find(v => v.lang.startsWith('en') && v.name.includes('Google') && v.name.includes('US')) ||
+        voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female')) ||
+        voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male')) ||
+        voices.find(v => v.lang.startsWith('en'));
+
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+        console.log('Using voice:', preferredVoice.name);
+      } else {
+        console.log('Using default voice');
+      }
+
+      // Add event listeners for debugging
+      utterance.onstart = () => console.log('Speech started');
+      utterance.onend = () => console.log('Speech ended');
+      utterance.onerror = (e) => console.error('Speech error:', e);
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    // Ensure voices are loaded before speaking
     const voices = window.speechSynthesis.getVoices();
-
-    // Priority order for natural female voices:
-    // 1. Microsoft voices (Zira, Aria - very natural on Windows)
-    // 2. Google voices (high quality)
-    // 3. Any voice with "Female" in the name
-    // 4. Default English voice
-    const preferredVoice =
-      voices.find(v => v.lang.startsWith('en') && (v.name.includes('Zira') || v.name.includes('Aria'))) ||
-      voices.find(v => v.lang.startsWith('en') && v.name.includes('Google') && v.name.includes('US')) ||
-      voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female')) ||
-      voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male')) ||
-      voices.find(v => v.lang.startsWith('en'));
-
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-      console.log('Using voice:', preferredVoice.name);
+    if (voices.length > 0) {
+      speakMessage();
+    } else {
+      // Wait for voices to load
+      console.log('Waiting for voices to load...');
+      window.speechSynthesis.addEventListener('voiceschanged', speakMessage, { once: true });
     }
-
-    window.speechSynthesis.speak(utterance);
   }
 }
 
@@ -861,6 +912,74 @@ function addAttendanceEvent(data) {
 function updateStats() {
   totalEventsEl.textContent = totalEvents;
   todayEventsEl.textContent = todayEvents;
+}
+
+// Update System Status Checklist
+function updateSystemStatus(component, status) {
+  systemStatus[component] = status;
+
+  const elements = {
+    server: checkServer,
+    database: checkDatabase,
+    device: checkDevice,
+    socket: checkSocket
+  };
+
+  const element = elements[component];
+  if (!element) return;
+
+  // Remove existing status classes
+  element.classList.remove('pending', 'success', 'error');
+
+  // Add new status class
+  if (status === true) {
+    element.classList.add('success');
+  } else if (status === false) {
+    element.classList.add('pending');
+  } else if (status === 'error') {
+    element.classList.add('error');
+  }
+
+  // Update label text
+  const label = element.querySelector('.check-label');
+  const labels = {
+    server: status === true ? 'Server Running' : status === 'error' ? 'Server Error' : 'Server Starting',
+    database: status === true ? 'Database Connected' : status === 'error' ? 'Database Error' : 'Database Connection',
+    device: status === true ? 'Device Connected' : status === 'error' ? 'Device Not Found' : 'Device Discovery',
+    socket: status === true ? 'Real-time Active' : status === 'error' ? 'Connection Error' : 'Real-time Connection'
+  };
+
+  if (label) {
+    label.textContent = labels[component];
+  }
+
+  // Check if system is ready
+  checkSystemReady();
+}
+
+// Check if all systems are ready
+function checkSystemReady() {
+  const allReady = systemStatus.server && systemStatus.database && systemStatus.device && systemStatus.socket;
+  const anyError = Object.values(systemStatus).includes('error');
+
+  const indicator = readyStatus.querySelector('.ready-indicator');
+  const statusText = indicator.querySelector('span');
+  const statusIcon = indicator.querySelector('svg');
+
+  if (allReady) {
+    indicator.className = 'ready-indicator ready';
+    statusIcon.innerHTML = '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>';
+    statusText.textContent = 'System Ready - Start Scanning!';
+    footerStatus.textContent = 'System is ready';
+  } else if (anyError) {
+    indicator.className = 'ready-indicator error';
+    statusIcon.innerHTML = '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>';
+    statusText.textContent = 'System Error - Check Logs';
+  } else {
+    indicator.className = 'ready-indicator waiting';
+    statusIcon.innerHTML = '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
+    statusText.textContent = 'Initializing System...';
+  }
 }
 
 // Initialize on load

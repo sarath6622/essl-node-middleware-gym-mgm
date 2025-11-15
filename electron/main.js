@@ -151,12 +151,17 @@ async function startServer() {
         }
 
         try {
-          log('info', `Scanning network... This may take 10-30 seconds`);
+          log('info', `⏳ Scanning network... This typically takes 10-20 seconds`);
+          log('info', `💡 Tip: Set autoDiscoverDevice: false in config to skip this and use static IP`);
 
-          // Add timeout to prevent hanging
+          // Track start time for minimum delay
+          const scanStartTime = Date.now();
+          const MINIMUM_SCAN_TIME = 15000; // Minimum 15 seconds before showing error
+
+          // Add timeout to prevent hanging - 40 seconds should be enough for most networks
           const scanPromise = findFirstDevice(true);
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Scan timeout')), 60000) // 60 second timeout
+            setTimeout(() => reject(new Error('Network scan timeout - no device found within 40 seconds')), 40000)
           );
 
           const discoveredIP = await Promise.race([scanPromise, timeoutPromise]);
@@ -170,14 +175,26 @@ async function startServer() {
               mainWindow.webContents.send('device-discovered', { ip: deviceIP });
             }
           } else {
+            // Ensure we've scanned for at least the minimum time
+            const scanDuration = Date.now() - scanStartTime;
+            if (scanDuration < MINIMUM_SCAN_TIME) {
+              const remainingTime = MINIMUM_SCAN_TIME - scanDuration;
+              log('info', `⏳ Completing thorough scan... ${Math.ceil(remainingTime / 1000)}s remaining`);
+              await new Promise(resolve => setTimeout(resolve, remainingTime));
+            }
+
             log('error', '❌ No device found during network scan!');
-            log('error', 'Please check:');
-            log('error', '  • Device is powered on');
-            log('error', '  • Device is on the same network');
-            log('error', '  • Firewall is not blocking port 4370');
-            log('error', '  • AP/Client isolation is disabled');
+            log('error', '');
+            log('error', 'Troubleshooting steps:');
+            log('error', '  1. Ensure device is powered on');
+            log('error', '  2. Check device is on the same network (WiFi/LAN)');
+            log('error', '  3. Verify firewall is not blocking port 4370');
+            log('error', '  4. Disable AP/Client isolation on your router');
+            log('error', '  5. Set autoDiscoverDevice: false in config and use static IP');
+            log('error', '');
             shouldConnect = false;
 
+            // Only show modal after minimum scan time has elapsed
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('device-not-found', {
                 suggestions: [
@@ -191,7 +208,24 @@ async function startServer() {
             }
           }
         } catch (scanError) {
-          log('error', `Scan failed: ${scanError.message}`);
+          // Track elapsed time
+          const scanStartTime = Date.now();
+          const scanDuration = Date.now() - scanStartTime;
+          const MINIMUM_SCAN_TIME = 15000;
+
+          // Ensure minimum time before showing error
+          if (scanDuration < MINIMUM_SCAN_TIME) {
+            const remainingTime = MINIMUM_SCAN_TIME - scanDuration;
+            await new Promise(resolve => setTimeout(resolve, remainingTime));
+          }
+
+          log('error', `❌ Network scan failed: ${scanError.message}`);
+          log('error', '');
+          log('error', 'You can either:');
+          log('error', '  • Click "Scan Network" in the UI to try again');
+          log('error', '  • Set autoDiscoverDevice: false in config/deviceConfig.js');
+          log('error', '  • Configure a static IP in config/deviceConfig.js');
+          log('error', '');
           shouldConnect = false;
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('scan-failed', { error: scanError.message });
@@ -214,7 +248,12 @@ async function startServer() {
           mainWindow.webContents.send('connecting', { ip: deviceIP, isMock: DEVICE_CONFIG.useMockDevice });
         }
 
+        // Track connection start time
+        const connectionStartTime = Date.now();
+        const MINIMUM_CONNECTION_TIME = 10000; // Minimum 10 seconds before showing error
+
         try {
+          log('info', '🔄 Attempting connection with retry logic...');
           const connected = await deviceService.connectToDevice(io);
 
           if (connected) {
@@ -241,12 +280,20 @@ async function startServer() {
               }, 10000);
             }
           } else {
+            // Ensure minimum time has elapsed before showing error
+            const connectionDuration = Date.now() - connectionStartTime;
+            if (connectionDuration < MINIMUM_CONNECTION_TIME) {
+              const remainingTime = MINIMUM_CONNECTION_TIME - connectionDuration;
+              log('info', `⏳ Verifying connection attempts... ${Math.ceil(remainingTime / 1000)}s`);
+              await new Promise(resolve => setTimeout(resolve, remainingTime));
+            }
+
             log('error', `❌ Failed to connect to device at ${deviceIP}`);
             log('error', 'Please check:');
             log('error', '  • Device IP is correct');
             log('error', '  • Device is powered on and accessible');
             log('error', '  • No other application is using the device');
-            
+
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('connection-failed', {
                 ip: deviceIP,
@@ -261,12 +308,24 @@ async function startServer() {
             }
           }
         } catch (connectionError) {
-          log('error', `Connection error: ${connectionError.message}`);
+          // Ensure minimum time has elapsed before showing error
+          const connectionDuration = Date.now() - connectionStartTime;
+          if (connectionDuration < MINIMUM_CONNECTION_TIME) {
+            const remainingTime = MINIMUM_CONNECTION_TIME - connectionDuration;
+            log('info', `⏳ Completing connection checks... ${Math.ceil(remainingTime / 1000)}s`);
+            await new Promise(resolve => setTimeout(resolve, remainingTime));
+          }
+
+          log('error', `❌ Connection error: ${connectionError.message}`);
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('connection-failed', {
               ip: deviceIP,
               error: connectionError.message,
-              suggestions: ['Check device power and network', 'Try reconnecting']
+              suggestions: [
+                'Check device power and network',
+                'Verify device is not being used by another application',
+                'Try reconnecting'
+              ]
             });
           }
         }

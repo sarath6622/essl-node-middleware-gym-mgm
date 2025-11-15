@@ -235,23 +235,48 @@ function parseArp(arpOut) {
  * @param {number} timeout - Info retrieval timeout in ms
  * @returns {Promise<{name: string, serialNumber: string}|null>}
  */
-async function getDeviceInfo(ip, port, timeout = 3000) {
+async function getDeviceInfo(ip, port, timeout = 2000) {
   let zk = null;
   let socketCreated = false;
+  let timeoutId = null;
+
+  const cleanup = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+
+    if (zk && socketCreated) {
+      try {
+        // Destroy socket directly to avoid write-after-end errors
+        if (zk.socket && !zk.socket.destroyed) {
+          zk.socket.removeAllListeners();
+          zk.socket.destroy();
+        }
+      } catch (e) {
+        // Silently ignore cleanup errors
+      }
+    }
+  };
 
   // Wrap in timeout promise
   const timeoutPromise = new Promise((resolve) => {
-    setTimeout(() => resolve({
-      name: `ZK Device (${ip.split('.').pop()})`,
-      serialNumber: 'Unknown',
-      model: 'ZK Device',
-      firmware: 'Timeout'
-    }), timeout);
+    timeoutId = setTimeout(() => {
+      cleanup();
+      resolve({
+        name: `ZK Device (.${ip.split('.').pop()})`,
+        serialNumber: 'Unknown',
+        model: 'ZK/eSSL Device',
+        firmware: 'N/A'
+      });
+    }, timeout);
   });
 
   const infoPromise = (async () => {
     try {
-      zk = new ZKLib(ip, port, 3000, 1500); // Reduced timeouts
+      zk = new ZKLib(ip, port, 2000, 1000); // Reduced timeouts for faster scan
+
+      // Create socket with error handling
       await zk.createSocket();
       socketCreated = true;
 
@@ -260,43 +285,59 @@ async function getDeviceInfo(ip, port, timeout = 3000) {
         zk.socket.setMaxListeners(100);
       }
 
-      const info = await zk.getInfo();
+      // Try to get device info with additional error handling
+      let info = null;
+      try {
+        info = await zk.getInfo();
+      } catch (infoError) {
+        // If getInfo fails, return basic info
+        cleanup();
+        return {
+          name: `ZK Device (.${ip.split('.').pop()})`,
+          serialNumber: 'Unknown',
+          model: 'ZK/eSSL Device',
+          firmware: 'Unknown'
+        };
+      }
 
-      // Extract device name and serial number
-      const name = info.name || info.deviceName || `Device ${ip.split('.').pop()}`;
-      const serialNumber = info.serialNumber || info.fwVersion || 'Unknown';
+      // Safely extract device information with null checks
+      const name = (info && (info.name || info.deviceName)) || `ZK Device (.${ip.split('.').pop()})`;
+      const serialNumber = (info && (info.serialNumber || info.fwVersion)) || 'Unknown';
+      const model = (info && info.platform) || 'ZK/eSSL Device';
+      const firmware = (info && info.fwVersion) || 'Unknown';
+
+      cleanup();
 
       return {
         name,
         serialNumber,
-        model: info.platform || 'ZK Device',
-        firmware: info.fwVersion || 'Unknown'
+        model,
+        firmware
       };
     } catch (error) {
       // If we can't get info, return default
+      cleanup();
       return {
-        name: `ZK Device (${ip.split('.').pop()})`,
+        name: `ZK Device (.${ip.split('.').pop()})`,
         serialNumber: 'Unknown',
-        model: 'Unknown',
+        model: 'ZK/eSSL Device',
         firmware: 'Unknown'
       };
-    } finally {
-      // Cleanup: Only try to disconnect if socket was created
-      if (zk && socketCreated) {
-        try {
-          // Destroy socket directly to avoid write-after-end errors
-          if (zk.socket && !zk.socket.destroyed) {
-            zk.socket.removeAllListeners();
-            zk.socket.destroy();
-          }
-        } catch (e) {
-          // Silently ignore cleanup errors
-        }
-      }
     }
   })();
 
-  return Promise.race([infoPromise, timeoutPromise]);
+  try {
+    const result = await Promise.race([infoPromise, timeoutPromise]);
+    return result;
+  } catch (error) {
+    cleanup();
+    return {
+      name: `ZK Device (.${ip.split('.').pop()})`,
+      serialNumber: 'Unknown',
+      model: 'ZK/eSSL Device',
+      firmware: 'Unknown'
+    };
+  }
 }
 
 /**

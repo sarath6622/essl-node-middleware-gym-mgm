@@ -142,28 +142,48 @@ async function connectToDeviceCore(io) {
     DEVICE_CONFIG.inactivityTimeout
   );
 
-  await zk.createSocket();
+  // Create socket with timeout
+  const createSocketPromise = zk.createSocket();
+  const socketTimeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Socket creation timeout')), 10000)
+  );
+
+  await Promise.race([createSocketPromise, socketTimeout]);
 
   // Increase max listeners to prevent warnings (must be done IMMEDIATELY after socket creation)
   if (zk.socket && zk.socket.setMaxListeners) {
     zk.socket.setMaxListeners(100); // Increased to 100 to prevent warnings
   }
 
-  log("success", "Successfully connected to eSSL K30 Pro!");
+  log("success", "✅ Successfully connected to eSSL K30 Pro!");
   isConnected = true;
 
+  // Try to get device info with timeout
   try {
-    const deviceInfo = await zk.getInfo();
-    log("success", "Device information retrieved:", deviceInfo);
+    const infoPromise = zk.getInfo();
+    const infoTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Device info timeout')), 5000)
+    );
+
+    const deviceInfo = await Promise.race([infoPromise, infoTimeout]);
+    log("success", "📋 Device information retrieved:", deviceInfo);
   } catch (infoErr) {
-    log("warning", "Could not retrieve device info:", infoErr.message);
+    log("warning", `⚠️ Could not retrieve device info: ${infoErr.message}`);
+    log("info", "Continuing without device info...");
   }
 
+  // Try to enable device with timeout
   try {
-    await zk.enableDevice();
-    log("success", "Device real-time mode enabled");
+    const enablePromise = zk.enableDevice();
+    const enableTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Enable device timeout')), 5000)
+    );
+
+    await Promise.race([enablePromise, enableTimeout]);
+    log("success", "✅ Device real-time mode enabled");
   } catch (err) {
-    log("warning", "Could not enable device (might already be enabled):", err.message);
+    log("warning", `⚠️ Could not enable device: ${err.message}`);
+    log("info", "Device might already be enabled, continuing...");
   }
 
   setupRealtimeListener(io);
@@ -275,39 +295,47 @@ function setupRealtimeListener(io) {
       socket.setMaxListeners(100);
     }
 
-    zk.getRealTimeLogs(async (data) => {
-      // Log full raw data for debugging
-      console.log("📥 Raw device data:", JSON.stringify(data));
+    // Wrap getRealTimeLogs in a try-catch to handle errors gracefully
+    try {
+      zk.getRealTimeLogs(async (data) => {
+        // Log full raw data for debugging
+        console.log("📥 Raw device data:", JSON.stringify(data));
 
-      // Update last event time for ALL events (including failed scans, heartbeats, etc.)
-      // This prevents false "no real-time events" warnings
-      lastRealtimeEventTime = Date.now();
-      realtimeFailureCount = 0; // Reset on any event
+        // Update last event time for ALL events (including failed scans, heartbeats, etc.)
+        // This prevents false "no real-time events" warnings
+        lastRealtimeEventTime = Date.now();
+        realtimeFailureCount = 0; // Reset on any event
 
-      // Check if this is an attendance event (has userId or user_id)
-      const hasUserId = data && (data.userId !== undefined || data.user_id !== undefined);
+        // Check if this is an attendance event (has userId or user_id)
+        const hasUserId = data && (data.userId !== undefined || data.user_id !== undefined);
 
-      if (hasUserId) {
-        const userId = data.userId ?? data.user_id;
+        if (hasUserId) {
+          const userId = data.userId ?? data.user_id;
 
-        // Check for failed/unrecognized fingerprint (userId is often 0 or -1 for failed scans)
-        if (userId === 0 || userId === -1 || userId === "0" || userId === "-1") {
-          log("warning", "❌ Fingerprint not recognized - scan failed");
-          io.emit("fingerprint_failed", {
-            timestamp: new Date().toISOString(),
-            message: "Fingerprint not recognized"
-          });
-          return;
+          // Check for failed/unrecognized fingerprint (userId is often 0 or -1 for failed scans)
+          if (userId === 0 || userId === -1 || userId === "0" || userId === "-1") {
+            log("warning", "❌ Fingerprint not recognized - scan failed");
+            io.emit("fingerprint_failed", {
+              timestamp: new Date().toISOString(),
+              message: "Fingerprint not recognized"
+            });
+            return;
+          }
+
+          log("event", "🎯 Processing attendance event - User ID:", userId);
+          await processAndSaveRecord(data, "essl-realtime", io);
+        } else {
+          // Skip non-attendance events (heartbeats, device status, etc.)
+          // But we still updated lastRealtimeEventTime above to show real-time is working
+          log("debug", "Skipping non-attendance event (heartbeat/status)");
         }
-
-        log("event", "🎯 Processing attendance event - User ID:", userId);
-        await processAndSaveRecord(data, "essl-realtime", io);
-      } else {
-        // Skip non-attendance events (heartbeats, device status, etc.)
-        // But we still updated lastRealtimeEventTime above to show real-time is working
-        log("debug", "Skipping non-attendance event (heartbeat/status)");
-      }
-    });
+      });
+    } catch (realtimeError) {
+      log("error", `Failed to setup real-time logs: ${realtimeError.message}`);
+      // Don't throw - connection was successful, just real-time monitoring failed
+      log("warning", "Device connected but real-time monitoring unavailable");
+      log("info", "You can still manually pull attendance records");
+    }
 
     realtimeListenerSetup = true;
     lastRealtimeEventTime = Date.now(); // Initialize
