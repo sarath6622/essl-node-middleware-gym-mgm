@@ -331,5 +331,3 @@ Contributions are welcome! Submit issues and PRs.
 Built with ❤️ for ZKTeco K30 Pro and compatible devices.
 
 ---
-
-If you want, I can turn this into a **professional GitHub-ready README with badges, screenshots, and better visuals**.
