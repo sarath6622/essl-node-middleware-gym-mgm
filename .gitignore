@@ -1,0 +1,40 @@
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Environment variables ---
+.env
+.env.local
+.env.*.local
+
+# --- Sensitive config files ---
+config/serviceAccountKey.json
+
+# --- Build output ---
+dist/
+build/
+coverage/
+
+# --- OS / Editor files ---
+.DS_Store
+Thumbs.db
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Logs ---
+logs/
+*.log
+*.log.*
+
+# --- IDEs ---
+.vscode/
+.idea/
+
+# --- Misc ---
+*.pid
+*.seed
+*.pid.lock

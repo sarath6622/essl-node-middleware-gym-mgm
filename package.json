@@ -1,0 +1,91 @@
+{
+  "name": "zk-attendance-desktop",
+  "version": "1.0.0",
+  "description": "ZK Teco Attendance Desktop App with real-time events and Firestore integration.",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node middleware.js",
+    "electron": "electron .",
+    "electron:dev": "NODE_ENV=development electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "electron-builder",
+    "build:mac": "npm run postinstall && electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "dist": "electron-builder --mac --win --linux",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "zklib",
+    "essl",
+    "k30-pro",
+    "attendance",
+    "real-time",
+    "firestore",
+    "electron",
+    "desktop"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.18.2",
+    "firebase-admin": "^13.5.0",
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.8.1",
+    "zkteco-js": "^1.7.1"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.zkattendance.desktop",
+    "productName": "ZK Attendance",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "config/**/*",
+      "routes/**/*",
+      "services/**/*",
+      "utils/**/*",
+      "middleware/**/*",
+      "middleware.js",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/zkteco-js/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "config/serviceAccountKey.json",
+        "to": "config/serviceAccountKey.json"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg"
+      ],
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "sign": null
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}

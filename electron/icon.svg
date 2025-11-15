@@ -1,0 +1,44 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="#6366f1"/>
+  
+  <!-- Fingerprint Icon -->
+  <g transform="translate(256, 256)" stroke="white" stroke-width="16" fill="none" stroke-linecap="round">
+    <!-- Center circle -->
+    <circle cx="0" cy="0" r="20"/>
+    
+    <!-- Inner rings -->
+    <path d="M 0,-50 A 50,50 0 0,1 50,0" opacity="0.8"/>
+    <path d="M 50,0 A 50,50 0 0,1 0,50" opacity="0.8"/>
+    <path d="M 0,50 A 50,50 0 0,1 -50,0" opacity="0.8"/>
+    <path d="M -50,0 A 50,50 0 0,1 0,-50" opacity="0.8"/>
+    
+    <!-- Middle rings -->
+    <path d="M 0,-80 A 80,80 0 0,1 56.6,-56.6" opacity="0.6"/>
+    <path d="M 56.6,-56.6 A 80,80 0 0,1 80,0" opacity="0.6"/>
+    <path d="M 80,0 A 80,80 0 0,1 56.6,56.6" opacity="0.6"/>
+    <path d="M 56.6,56.6 A 80,80 0 0,1 0,80" opacity="0.6"/>
+    <path d="M 0,80 A 80,80 0 0,1 -56.6,56.6" opacity="0.6"/>
+    <path d="M -56.6,56.6 A 80,80 0 0,1 -80,0" opacity="0.6"/>
+    <path d="M -80,0 A 80,80 0 0,1 -56.6,-56.6" opacity="0.6"/>
+    <path d="M -56.6,-56.6 A 80,80 0 0,1 0,-80" opacity="0.6"/>
+    
+    <!-- Outer rings -->
+    <path d="M 0,-110 A 110,110 0 0,1 77.8,-77.8" opacity="0.4"/>
+    <path d="M 77.8,-77.8 A 110,110 0 0,1 110,0" opacity="0.4"/>
+    <path d="M 110,0 A 110,110 0 0,1 77.8,77.8" opacity="0.4"/>
+    <path d="M 77.8,77.8 A 110,110 0 0,1 0,110" opacity="0.4"/>
+    <path d="M 0,110 A 110,110 0 0,1 -77.8,77.8" opacity="0.4"/>
+    <path d="M -77.8,77.8 A 110,110 0 0,1 -110,0" opacity="0.4"/>
+    <path d="M -110,0 A 110,110 0 0,1 -77.8,-77.8" opacity="0.4"/>
+    <path d="M -77.8,-77.8 A 110,110 0 0,1 0,-110" opacity="0.4"/>
+  </g>
+  
+  <!-- Clock element (for attendance) -->
+  <g transform="translate(380, 380)">
+    <circle cx="0" cy="0" r="50" fill="white"/>
+    <line x1="0" y1="0" x2="0" y2="-30" stroke="#6366f1" stroke-width="4" stroke-linecap="round"/>
+    <line x1="0" y1="0" x2="20" y2="0" stroke="#6366f1" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="0" cy="0" r="4" fill="#6366f1"/>
+  </g>
+</svg>
