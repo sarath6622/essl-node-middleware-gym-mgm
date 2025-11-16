@@ -4,7 +4,7 @@ const DEVICE_CONFIG = {
 
   // Auto-discovery settings
   autoDiscoverDevice: true, // <-- Set to false to use static IP (faster, more reliable)
-  autoDiscoveryRetries: 1, // <-- Just 1 attempt for quick scan
+  autoDiscoveryRetries: 5, // <-- Just 1 attempt for quick scan
   autoDiscoveryRetryDelay: 3000, // <-- Reduced to 3 seconds between retries
 
   // Real device IP configuration (only used if useMockDevice is false and autoDiscoverDevice is false)

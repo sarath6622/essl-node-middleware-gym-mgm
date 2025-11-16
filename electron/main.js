@@ -144,91 +144,94 @@ async function startServer() {
       if (!DEVICE_CONFIG.useMockDevice && DEVICE_CONFIG.autoDiscoverDevice) {
         log('info', '');
         log('info', '🔍 Auto-discovery enabled. Scanning network for fingerprint device...');
-        log('info', 'Note: Configured static IP will be ignored during auto-discovery');
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('scan-started');
         }
 
-        try {
-          log('info', `⏳ Scanning network... This typically takes 10-20 seconds`);
-          log('info', `💡 Tip: Set autoDiscoverDevice: false in config to skip this and use static IP`);
+        const maxRetries = DEVICE_CONFIG.autoDiscoveryRetries || 5;
+        const retryDelay = DEVICE_CONFIG.autoDiscoveryRetryDelay || 3000;
+        let discoveredIP = null;
 
-          // Track start time for minimum delay
-          const scanStartTime = Date.now();
-          const MINIMUM_SCAN_TIME = 15000; // Minimum 15 seconds before showing error
+        // Track overall start time for minimum delay
+        const overallStartTime = Date.now();
+        const MINIMUM_SCAN_TIME = 15000; // Minimum 15 seconds before showing error
 
-          // Add timeout to prevent hanging - 40 seconds should be enough for most networks
-          const scanPromise = findFirstDevice(true);
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Network scan timeout - no device found within 40 seconds')), 40000)
-          );
+        // Try to discover device with retries (same logic as middleware.js)
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          if (attempt > 1) {
+            log('info', `🔄 Retry attempt ${attempt}/${maxRetries} - Scanning again in ${retryDelay / 1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
 
-          const discoveredIP = await Promise.race([scanPromise, timeoutPromise]);
+          log('info', `🔍 Scanning network (attempt ${attempt}/${maxRetries})...`);
 
-          if (discoveredIP) {
-            deviceIP = discoveredIP;
-            log('success', `✅ Device discovered at ${deviceIP}`);
-            DEVICE_CONFIG.ip = deviceIP;
+          try {
+            // Add timeout to prevent hanging per attempt
+            const scanPromise = findFirstDevice(attempt === 1); // Only verbose on first attempt
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Scan timeout')), 40000)
+            );
 
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('device-discovered', { ip: deviceIP });
+            discoveredIP = await Promise.race([scanPromise, timeoutPromise]);
+
+            if (discoveredIP) {
+              deviceIP = discoveredIP;
+              log('success', `✅ Device discovered at ${deviceIP} on attempt ${attempt}/${maxRetries}`);
+              DEVICE_CONFIG.ip = deviceIP;
+
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('device-discovered', { ip: deviceIP });
+              }
+              break;
+            } else {
+              if (attempt < maxRetries) {
+                log('warning', `⚠️ No device found on attempt ${attempt}/${maxRetries}`);
+              }
             }
-          } else {
-            // Ensure we've scanned for at least the minimum time
-            const scanDuration = Date.now() - scanStartTime;
-            if (scanDuration < MINIMUM_SCAN_TIME) {
-              const remainingTime = MINIMUM_SCAN_TIME - scanDuration;
-              log('info', `⏳ Completing thorough scan... ${Math.ceil(remainingTime / 1000)}s remaining`);
-              await new Promise(resolve => setTimeout(resolve, remainingTime));
-            }
-
-            log('error', '❌ No device found during network scan!');
-            log('error', '');
-            log('error', 'Troubleshooting steps:');
-            log('error', '  1. Ensure device is powered on');
-            log('error', '  2. Check device is on the same network (WiFi/LAN)');
-            log('error', '  3. Verify firewall is not blocking port 4370');
-            log('error', '  4. Disable AP/Client isolation on your router');
-            log('error', '  5. Set autoDiscoverDevice: false in config and use static IP');
-            log('error', '');
-            shouldConnect = false;
-
-            // Only show modal after minimum scan time has elapsed
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('device-not-found', {
-                suggestions: [
-                  'Ensure the device is powered on',
-                  'Check device is on the same WiFi/network',
-                  'Disable AP isolation on your router',
-                  'Try manual scan from the UI',
-                  'Click "Reconnect" to scan again after device is online'
-                ]
-              });
+          } catch (attemptError) {
+            if (attempt < maxRetries) {
+              log('warning', `⚠️ Scan error on attempt ${attempt}/${maxRetries}: ${attemptError.message}`);
             }
           }
-        } catch (scanError) {
-          // Track elapsed time
-          const scanStartTime = Date.now();
-          const scanDuration = Date.now() - scanStartTime;
-          const MINIMUM_SCAN_TIME = 15000;
+        }
 
-          // Ensure minimum time before showing error
-          if (scanDuration < MINIMUM_SCAN_TIME) {
-            const remainingTime = MINIMUM_SCAN_TIME - scanDuration;
+        if (!discoveredIP) {
+          // Ensure we've scanned for at least the minimum time
+          const totalDuration = Date.now() - overallStartTime;
+          if (totalDuration < MINIMUM_SCAN_TIME) {
+            const remainingTime = MINIMUM_SCAN_TIME - totalDuration;
+            log('info', `⏳ Completing thorough scan... ${Math.ceil(remainingTime / 1000)}s remaining`);
             await new Promise(resolve => setTimeout(resolve, remainingTime));
           }
 
-          log('error', `❌ Network scan failed: ${scanError.message}`);
           log('error', '');
-          log('error', 'You can either:');
-          log('error', '  • Click "Scan Network" in the UI to try again');
-          log('error', '  • Set autoDiscoverDevice: false in config/deviceConfig.js');
-          log('error', '  • Configure a static IP in config/deviceConfig.js');
+          log('error', `❌ No device found after ${maxRetries} attempts!`);
+          log('error', 'Connection unsuccessful. Please ensure:');
+          log('error', '  1. The fingerprint device is powered on');
+          log('error', '  2. The device is connected to the same network');
+          log('error', '  3. No firewall is blocking port 4370');
+          log('error', '  4. AP/Client isolation is disabled on your router');
+          log('error', '');
+          log('info', '💡 You can:');
+          log('info', '  • Check your router\'s DHCP/connected devices list');
+          log('info', '  • Click "Scan Network" in the UI to try again');
+          log('info', '  • Set autoDiscoverDevice: false in config and use a static IP');
+          log('info', `  • Increase autoDiscoveryRetries in config (current: ${maxRetries})`);
           log('error', '');
           shouldConnect = false;
+
+          // Only show modal after minimum scan time has elapsed
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('scan-failed', { error: scanError.message });
+            mainWindow.webContents.send('device-not-found', {
+              suggestions: [
+                'Ensure the device is powered on',
+                'Check device is on the same WiFi/network',
+                'Disable AP isolation on your router',
+                'Try manual scan from the UI',
+                'Click "Reconnect" to scan again after device is online'
+              ]
+            });
           }
         }
         log('info', '');
