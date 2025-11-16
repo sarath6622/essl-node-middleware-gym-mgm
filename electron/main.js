@@ -10,6 +10,7 @@ const apiRoutes = require('../routes/api');
 const userManagementRoutes = require('../routes/userManagement');
 const { initializeMemberEnrollmentListener } = require('../services/memberEnrollmentService');
 const { prewarmCache } = require('../services/userService');
+const syncService = require('../services/syncService');
 const DEVICE_CONFIG = require('../config/deviceConfig');
 
 // Log app environment for debugging
@@ -130,6 +131,13 @@ async function startServer() {
       } catch (cacheErr) {
         log('warning', `Cache prewarming failed: ${cacheErr.message}`);
         // Continue anyway - cache will populate on first use
+      }
+
+      // Start sync service for offline mode
+      try {
+        syncService.startSync(io);
+      } catch (syncErr) {
+        log('warning', `Sync service failed to start: ${syncErr.message}`);
       }
 
       // Send status to renderer
@@ -346,6 +354,9 @@ async function startServer() {
 
 function stopServer() {
   return new Promise((resolve) => {
+    // Stop sync service
+    syncService.stopSync();
+
     if (deviceService) {
       deviceService.stopPolling();
       deviceService.disconnectFromDevice().then(() => {
@@ -526,6 +537,35 @@ ipcMain.handle('connect-to-ip', async (event, ip) => {
       });
     }
     
+    return { success: false, error: error.message };
+  }
+});
+
+// Sync service IPC handlers
+ipcMain.handle('get-sync-status', async () => {
+  try {
+    const status = await syncService.getSyncStatus();
+    return { success: true, status };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('force-sync', async () => {
+  try {
+    const result = await syncService.forceSyncNow(io);
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-offline-stats', async () => {
+  try {
+    const offlineStorage = require('../services/offlineStorage');
+    const stats = await offlineStorage.getStats();
+    return { success: true, stats };
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });

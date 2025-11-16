@@ -479,6 +479,61 @@ body {
   }
 }
 
+/* Offline/Sync Status */
+.offline-sync-status {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.75rem;
+  border-left: 3px solid var(--success);
+}
+
+.offline-sync-status.offline {
+  border-left-color: var(--warning);
+}
+
+.sync-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sync-icon {
+  font-size: 1.25rem;
+}
+
+.sync-icon.offline {
+  opacity: 0.5;
+}
+
+.sync-text {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--success);
+}
+
+.offline-sync-status.offline .sync-text {
+  color: var(--warning);
+}
+
+.sync-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.pending-count {
+  font-weight: 500;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+
 /* Content Area */
 .content {
   flex: 1;

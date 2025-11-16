@@ -5,6 +5,7 @@ const { saveAttendanceRecord } = require("./firestoreService");
 const { getUserByBiometricId } = require("./userService");
 const { getDateInTimezone } = require("../utils/dateUtils");
 const { retryWithBackoff, CircuitBreaker } = require("../utils/retryHelper");
+const offlineStorage = require("./offlineStorage");
 const EventEmitter = require("events");
 
 // Increase default max listeners globally to prevent warnings
@@ -118,14 +119,28 @@ async function processAndSaveRecord(rawRecord, source, io) {
   io.emit("attendance_event", attendanceRecord);
 
   // Save to Firestore in background (don't await)
-  saveAttendanceRecord(attendanceRecord).catch(err => {
+  saveAttendanceRecord(attendanceRecord).catch(async err => {
     log("error", `Failed to save attendance to Firestore for ${attendanceRecord.name}:`, err.message);
-    // Emit error event so UI can show a retry option
-    io.emit("attendance_save_failed", {
-      userId: attendanceRecord.userId,
-      name: attendanceRecord.name,
-      error: err.message
-    });
+    log("warning", `💾 Saving to offline storage...`);
+
+    // Save to offline storage when Firebase is unavailable
+    const offlineSaved = await offlineStorage.saveOfflineAttendance(attendanceRecord);
+
+    if (offlineSaved) {
+      // Emit offline event so UI can show offline indicator
+      io.emit("attendance_saved_offline", {
+        userId: attendanceRecord.userId,
+        name: attendanceRecord.name,
+        timestamp: attendanceRecord.checkInTime
+      });
+    } else {
+      // Emit error event if both Firebase and offline storage failed
+      io.emit("attendance_save_failed", {
+        userId: attendanceRecord.userId,
+        name: attendanceRecord.name,
+        error: err.message
+      });
+    }
   });
 }
 

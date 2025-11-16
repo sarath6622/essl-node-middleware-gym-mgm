@@ -1,5 +1,6 @@
 const { db } = require("../config/firebaseConfig");
 const log = require("../utils/logger");
+const offlineStorage = require("./offlineStorage");
 
 const USERS_COLLECTION = "users";
 
@@ -126,7 +127,24 @@ async function getUserByBiometricId(biometricDeviceId, skipCache = false) {
     log("error", `Failed to fetch user details for biometricDeviceId: ${biometricDeviceId}`, {
       errorMessage: error.message,
     });
-    return null;
+
+    // Try to get from offline cache as fallback
+    log("warning", `📦 Trying offline cache for biometricDeviceId: ${biometricDeviceId}`);
+    try {
+      const cachedUsers = await offlineStorage.getCachedUsers();
+      const user = cachedUsers.find(u => String(u.biometricDeviceId) === cacheKey);
+
+      if (user) {
+        log("success", `✅ Found user in offline cache: ${user.name}`);
+        return user;
+      } else {
+        log("warning", `User not found in offline cache either`);
+        return null;
+      }
+    } catch (offlineError) {
+      log("error", `Failed to read offline cache: ${offlineError.message}`);
+      return null;
+    }
   }
 }
 
@@ -162,6 +180,7 @@ async function prewarmCache() {
 
     const now = Date.now();
     let cachedCount = 0;
+    const allUsers = [];
 
     snapshot.forEach((doc) => {
       const userData = {
@@ -175,8 +194,12 @@ async function prewarmCache() {
         cachedAt: now,
         expiresAt: now + CACHE_TTL,
       });
+      allUsers.push(userData);
       cachedCount++;
     });
+
+    // Also save to offline storage for offline access
+    await offlineStorage.cacheUsers(allUsers);
 
     const duration = Date.now() - startTime;
     log("success", `✅ Cache pre-warmed with ${cachedCount} users in ${duration}ms`);

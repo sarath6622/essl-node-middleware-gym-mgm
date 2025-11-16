@@ -34,6 +34,11 @@ const checkDevice = document.getElementById('checkDevice');
 const checkSocket = document.getElementById('checkSocket');
 const readyStatus = document.getElementById('readyStatus');
 
+// Offline/Sync status elements
+const offlineSyncStatus = document.getElementById('offlineSyncStatus');
+const syncDetails = document.getElementById('syncDetails');
+const forceSyncBtn = document.getElementById('forceSyncBtn');
+
 // Initialize
 async function init() {
   try {
@@ -67,6 +72,9 @@ async function init() {
 
     // Setup IPC listeners
     setupIPCListeners();
+
+    // Setup sync status monitoring
+    setupSyncMonitoring();
   } catch (error) {
     footerStatus.textContent = 'Error: ' + error.message;
   }
@@ -151,6 +159,35 @@ function setupSocketIO() {
         updateStatus('Connected', 'connected');
         footerStatus.textContent = `Device connected at ${data.deviceIp}`;
       }
+    });
+
+    // Sync-related events
+    socket.on('connection_status', (data) => {
+      console.log('Connection status changed:', data.online ? 'Online' : 'Offline');
+      updateSyncStatus();
+    });
+
+    socket.on('attendance_saved_offline', (data) => {
+      console.log('📦 Attendance saved offline:', data);
+      updateSyncStatus();
+    });
+
+    socket.on('sync_progress', (data) => {
+      console.log('🔄 Sync progress:', data);
+      const syncText = offlineSyncStatus.querySelector('.sync-text');
+      if (syncText) {
+        syncText.textContent = `Syncing... ${data.progress}%`;
+      }
+    });
+
+    socket.on('sync_complete', (data) => {
+      console.log('✅ Sync complete:', data);
+      updateSyncStatus();
+    });
+
+    socket.on('sync_error', (data) => {
+      console.error('❌ Sync error:', data);
+      updateSyncStatus();
     });
   } catch (error) {
     footerStatus.textContent = 'Socket.IO setup failed: ' + error.message;
@@ -928,6 +965,100 @@ function checkSystemReady() {
     indicator.className = 'ready-indicator waiting';
     statusIcon.innerHTML = '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>';
     statusText.textContent = 'Initializing System...';
+  }
+}
+
+// Update sync status display
+async function updateSyncStatus() {
+  if (!window.electronAPI || !window.electronAPI.getSyncStatus) {
+    return;
+  }
+
+  try {
+    const result = await window.electronAPI.getSyncStatus();
+    if (!result.success) return;
+
+    const { status } = result;
+    const isOnline = status.isOnline;
+    const pendingRecords = status.pendingRecords || 0;
+
+    // Update sync header
+    const syncIcon = offlineSyncStatus.querySelector('.sync-icon');
+    const syncText = offlineSyncStatus.querySelector('.sync-text');
+
+    if (isOnline) {
+      offlineSyncStatus.classList.remove('offline');
+      syncIcon.textContent = '🌐';
+      syncIcon.classList.remove('offline');
+      syncText.textContent = 'Online';
+    } else {
+      offlineSyncStatus.classList.add('offline');
+      syncIcon.textContent = '📴';
+      syncIcon.classList.add('offline');
+      syncText.textContent = 'Offline';
+    }
+
+    // Update pending count
+    const pendingCount = syncDetails.querySelector('.pending-count');
+    if (pendingRecords > 0) {
+      pendingCount.textContent = `${pendingRecords} pending record${pendingRecords > 1 ? 's' : ''}`;
+      forceSyncBtn.style.display = isOnline ? 'block' : 'none';
+    } else {
+      pendingCount.textContent = 'All synced';
+      forceSyncBtn.style.display = 'none';
+    }
+
+    // Show sync status if there are pending records
+    if (status.isSyncing) {
+      syncText.textContent = 'Syncing...';
+    }
+  } catch (error) {
+    console.error('Failed to update sync status:', error);
+  }
+}
+
+// Handle force sync
+async function handleForceSync() {
+  if (!window.electronAPI || !window.electronAPI.forceSync) {
+    return;
+  }
+
+  try {
+    forceSyncBtn.disabled = true;
+    forceSyncBtn.textContent = 'Syncing...';
+
+    const result = await window.electronAPI.forceSync();
+
+    if (result.success) {
+      console.log('Sync completed:', result.results);
+      await updateSyncStatus();
+    } else {
+      console.error('Sync failed:', result.error);
+    }
+  } catch (error) {
+    console.error('Force sync error:', error);
+  } finally {
+    forceSyncBtn.disabled = false;
+    forceSyncBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+      </svg>
+      Sync Now
+    `;
+  }
+}
+
+// Set up sync status monitoring
+function setupSyncMonitoring() {
+  // Update sync status every 10 seconds
+  setInterval(updateSyncStatus, 10000);
+
+  // Initial update
+  updateSyncStatus();
+
+  // Add force sync button handler
+  if (forceSyncBtn) {
+    forceSyncBtn.addEventListener('click', handleForceSync);
   }
 }
 

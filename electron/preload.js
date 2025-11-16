@@ -23,7 +23,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   connectToIP: (ip) => {
     return ipcRenderer.invoke('connect-to-ip', ip);
   },
-  
+
+  // Sync and offline mode
+  getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
+  forceSync: () => ipcRenderer.invoke('force-sync'),
+  getOfflineStats: () => ipcRenderer.invoke('get-offline-stats'),
+
   // Listen to events from main process
   onServerStarted: (callback) => {
     ipcRenderer.on('server-started', (event, data) => callback(data));
