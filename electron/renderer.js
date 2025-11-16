@@ -158,6 +158,11 @@ function setupSocketIO() {
       if (data.connected) {
         updateStatus('Connected', 'connected');
         footerStatus.textContent = `Device connected at ${data.deviceIp}`;
+        updateSystemStatus('device', true);
+        deviceIP.textContent = data.deviceIp;
+      } else {
+        updateStatus('Disconnected', 'disconnected');
+        updateSystemStatus('device', 'error');
       }
     });
 
@@ -222,44 +227,48 @@ function setupIPCListeners() {
   window.electronAPI.onScanStarted(() => {
     updateStatus('Scanning network...', 'scanning');
     footerStatus.textContent = 'Scanning for devices...';
+    updateSystemStatus('device', 'Scanning...');
   });
-  
+
   window.electronAPI.onDeviceDiscovered((data) => {
     deviceIP.textContent = data.ip;
     footerStatus.textContent = `Device discovered at ${data.ip}`;
+    updateSystemStatus('device', 'Connecting...');
   });
-  
+
   window.electronAPI.onDeviceNotFound((data) => {
     updateStatus('No device found', 'disconnected');
     deviceIP.textContent = '-';
     footerStatus.textContent = 'No device found on network';
     updateSystemStatus('device', 'error');
-    
+
     // Show suggestions
     if (data && data.suggestions) {
       showErrorModal('Device Not Found', 'No fingerprint device was found on your network.', data.suggestions);
     }
   });
-  
+
   window.electronAPI.onScanFailed((data) => {
     updateStatus('Scan failed', 'disconnected');
     deviceStatus.textContent = 'Scan Error';
     footerStatus.textContent = `Scan failed: ${data.error || 'Unknown error'}`;
-    
+    updateSystemStatus('device', 'error');
+
     showErrorModal('Network Scan Failed', data.error || 'An error occurred during network scanning.', [
       'Check your network connection',
       'Try manual scan from the UI',
       'Restart the application'
     ]);
   });
-  
+
   window.electronAPI.onConnecting((data) => {
     updateStatus('Connecting...', 'scanning');
     deviceIP.textContent = data.ip;
     deviceMode.textContent = data.isMock ? 'Mock' : 'Real Device';
     footerStatus.textContent = `Connecting to ${data.ip}...`;
+    updateSystemStatus('device', 'Connecting...');
   });
-  
+
   window.electronAPI.onDeviceConnected((data) => {
     updateStatus('Connected', 'connected');
     deviceIP.textContent = data.ip;
@@ -926,13 +935,51 @@ function updateSystemStatus(component, status) {
     element.classList.add('error');
   }
 
-  // Update label text
+  // Update icon SVG based on status
+  const iconSpan = element.querySelector('.check-icon');
   const label = element.querySelector('.check-label');
+
+  let iconSVG = '';
+  if (status === true) {
+    // Success - Checkmark icon
+    iconSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>`;
+  } else if (status === 'error') {
+    // Error - X icon
+    iconSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="15" y1="9" x2="9" y2="15"/>
+      <line x1="9" y1="9" x2="15" y2="15"/>
+    </svg>`;
+  } else {
+    // Pending/Loading - Spinner icon
+    iconSVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12 6v6l4 2"/>
+    </svg>`;
+  }
+
+  if (iconSpan) {
+    iconSpan.innerHTML = iconSVG;
+  }
+
+  // Support custom status messages
+  if (typeof status === 'string' && status !== 'error') {
+    // Custom status message (e.g., "Searching...", "Connecting...")
+    if (label) {
+      label.textContent = status;
+    }
+    element.classList.add('pending');
+    checkSystemReady();
+    return;
+  }
+
   const labels = {
-    server: status === true ? 'Server Running' : status === 'error' ? 'Server Error' : 'Server Starting',
-    database: status === true ? 'Database Connected' : status === 'error' ? 'Database Error' : 'Database Connection',
-    device: status === true ? 'Device Connected' : status === 'error' ? 'Device Not Found' : 'Device Discovery',
-    socket: status === true ? 'Real-time Active' : status === 'error' ? 'Connection Error' : 'Real-time Connection'
+    server: status === true ? 'Running' : status === 'error' ? 'Error' : 'Starting',
+    database: status === true ? 'Connected' : status === 'error' ? 'Error' : 'Connecting',
+    device: status === true ? 'Connected' : status === 'error' ? 'Not Found' : 'Searching',
+    socket: status === true ? 'Active' : status === 'error' ? 'Error' : 'Connecting'
   };
 
   if (label) {

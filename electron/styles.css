@@ -371,6 +371,13 @@ body {
   margin-bottom: 1rem;
 }
 
+.status-checklist-compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
 .checklist-item {
   display: flex;
   align-items: center;
@@ -382,10 +389,30 @@ body {
   transition: all 0.3s ease;
 }
 
+.checklist-item-compact {
+  padding: 0.5rem;
+  margin-bottom: 0;
+  gap: 0.5rem;
+}
+
 .checklist-item .check-icon {
-  font-size: 1.25rem;
-  min-width: 24px;
-  text-align: center;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checklist-item-compact .check-icon {
+  min-width: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.checklist-item .check-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .checklist-item .check-label {
@@ -394,8 +421,25 @@ body {
   color: var(--text-secondary);
 }
 
-.checklist-item.pending .check-icon::after {
-  content: '⏳';
+.checklist-item-compact .check-label {
+  font-size: 0.8rem;
+}
+
+.checklist-item.pending .check-icon {
+  color: var(--warning);
+}
+
+.checklist-item.pending .check-icon svg {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes checklistSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .checklist-item.success {
@@ -403,8 +447,8 @@ body {
   border-left: 3px solid var(--success);
 }
 
-.checklist-item.success .check-icon::after {
-  content: '✅';
+.checklist-item.success .check-icon {
+  color: var(--success);
 }
 
 .checklist-item.success .check-label {
@@ -416,8 +460,8 @@ body {
   border-left: 3px solid var(--error);
 }
 
-.checklist-item.error .check-icon::after {
-  content: '❌';
+.checklist-item.error .check-icon {
+  color: var(--error);
 }
 
 .checklist-item.error .check-label {

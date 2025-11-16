@@ -56,26 +56,6 @@
           </div>
         </div>
 
-        <!-- Statistics -->
-        <div class="card">
-          <h2 class="card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            Statistics
-          </h2>
-          <div class="stats">
-            <div class="stat-item">
-              <div class="stat-value" id="totalEvents">0</div>
-              <div class="stat-label">Total Events</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value" id="todayEvents">0</div>
-              <div class="stat-label">Today</div>
-            </div>
-          </div>
-        </div>
-
         <!-- System Status Checklist -->
         <div class="card">
           <h2 class="card-title">
@@ -85,22 +65,42 @@
             </svg>
             System Status
           </h2>
-          <div class="status-checklist">
-            <div class="checklist-item" id="checkServer">
-              <span class="check-icon">⏳</span>
-              <span class="check-label">Server Starting</span>
+          <div class="status-checklist status-checklist-compact">
+            <div class="checklist-item checklist-item-compact" id="checkServer">
+              <span class="check-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </span>
+              <span class="check-label">Server</span>
             </div>
-            <div class="checklist-item" id="checkDatabase">
-              <span class="check-icon">⏳</span>
-              <span class="check-label">Database Connection</span>
+            <div class="checklist-item checklist-item-compact" id="checkDatabase">
+              <span class="check-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </span>
+              <span class="check-label">Database</span>
             </div>
-            <div class="checklist-item" id="checkDevice">
-              <span class="check-icon">⏳</span>
-              <span class="check-label">Device Discovery</span>
+            <div class="checklist-item checklist-item-compact" id="checkDevice">
+              <span class="check-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </span>
+              <span class="check-label">Device</span>
             </div>
-            <div class="checklist-item" id="checkSocket">
-              <span class="check-icon">⏳</span>
-              <span class="check-label">Real-time Connection</span>
+            <div class="checklist-item checklist-item-compact" id="checkSocket">
+              <span class="check-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </span>
+              <span class="check-label">Socket</span>
             </div>
           </div>
           <div class="ready-status" id="readyStatus">
