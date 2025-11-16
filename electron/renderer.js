@@ -16,16 +16,11 @@ let systemStatus = {
 // DOM Elements
 const connectionStatus = document.getElementById('connectionStatus');
 const deviceIP = document.getElementById('deviceIP');
-const devicePort = document.getElementById('devicePort');
-const autoDiscovery = document.getElementById('autoDiscovery');
-const mockMode = document.getElementById('mockMode');
-const serverPort = document.getElementById('serverPort');
 const totalEventsEl = document.getElementById('totalEvents');
 const todayEventsEl = document.getElementById('todayEvents');
 const eventsContainer = document.getElementById('eventsContainer');
 const logsContainer = document.getElementById('logsContainer');
 const footerStatus = document.getElementById('footerStatus');
-const scanBtn = document.getElementById('scanBtn');
 const reconnectBtn = document.getElementById('reconnectBtn');
 const clearBtn = document.getElementById('clearBtn');
 const devicesModal = document.getElementById('devicesModal');
@@ -79,9 +74,7 @@ async function init() {
 
 // Display Configuration
 function displayConfig(config) {
-  autoDiscovery.textContent = config.autoDiscoverDevice ? 'Enabled' : 'Disabled';
-  mockMode.textContent = config.useMockDevice ? 'Yes' : 'No';
-  devicePort.textContent = config.port;
+  // Configuration is now minimal - deviceIP is updated elsewhere
 }
 
 // Setup Socket.IO for real-time events
@@ -166,13 +159,12 @@ function setupSocketIO() {
 
 // Setup Event Listeners
 function setupEventListeners() {
-  scanBtn.addEventListener('click', handleScan);
   reconnectBtn.addEventListener('click', handleReconnect);
   clearBtn.addEventListener('click', handleClear);
   modalClose.addEventListener('click', () => {
     devicesModal.classList.remove('active');
   });
-  
+
   // Close modal on background click
   devicesModal.addEventListener('click', (e) => {
     if (e.target === devicesModal) {
@@ -185,7 +177,6 @@ function setupEventListeners() {
 function setupIPCListeners() {
   // Listen to IPC events from main process
   window.electronAPI.onServerStarted((data) => {
-    serverPort.textContent = data.port;
     footerStatus.textContent = `Server running on port ${data.port}`;
     updateSystemStatus('server', true);
     updateSystemStatus('database', true); // Firebase initializes with server
@@ -339,46 +330,6 @@ function addLogMessage(logData) {
   logsContainer.scrollTop = logsContainer.scrollHeight;
 }
 
-// Handle Network Scan
-async function handleScan() {
-  scanBtn.disabled = true;
-  scanBtn.innerHTML = '<span class="spinner"></span> Scanning...';
-  footerStatus.textContent = 'Scanning network...';
-  
-  try {
-    const result = await window.electronAPI.scanNetwork();
-    
-    if (result.success && result.devices.length > 0) {
-      displayDevices(result.devices, result.connectedIP);
-      footerStatus.textContent = `Found ${result.devices.length} device(s)`;
-    } else {
-      modalBody.innerHTML = `
-        <div class="empty-state">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-          <h3>No Devices Found</h3>
-          <p>No fingerprint devices found on the network</p>
-        </div>
-      `;
-      devicesModal.classList.add('active');
-      footerStatus.textContent = 'No devices found';
-    }
-  } catch (error) {
-    console.error('Scan error:', error);
-    footerStatus.textContent = 'Scan failed: ' + error.message;
-  } finally {
-    scanBtn.disabled = false;
-    scanBtn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/>
-        <path d="m21 21-4.35-4.35"/>
-      </svg>
-      Scan Network
-    `;
-  }
-}
 
 // Display Discovered Devices
 function displayDevices(devices, connectedIP = null) {
@@ -515,10 +466,9 @@ async function handleReconnect() {
   // Close error modal if open
   devicesModal.classList.remove('active');
   
-  // Disable buttons
+  // Disable button
   reconnectBtn.disabled = true;
-  scanBtn.disabled = true;
-  
+
   reconnectBtn.innerHTML = '<span class="spinner"></span> Reconnecting...';
   updateStatus('Reconnecting...', 'scanning');
   footerStatus.textContent = 'Attempting to reconnect...';
@@ -558,7 +508,6 @@ async function handleReconnect() {
     }, 500);
   } finally {
     reconnectBtn.disabled = false;
-    scanBtn.disabled = false;
     reconnectBtn.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>

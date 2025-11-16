@@ -33,7 +33,30 @@
     <main class="main-content">
       <!-- Left Panel - Device Info -->
       <aside class="sidebar">
-        <!-- Statistics (Top) -->
+        <!-- Configuration (Top) -->
+        <div class="card card-compact">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+            </svg>
+            Device
+          </h2>
+          <div class="config-compact">
+            <div class="device-ip-display">
+              <span class="device-ip-label">IP:</span>
+              <span class="device-ip-value" id="deviceIP">-</span>
+            </div>
+            <button class="btn btn-primary btn-block" id="reconnectBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+              </svg>
+              Reconnect
+            </button>
+          </div>
+        </div>
+
+        <!-- Statistics -->
         <div class="card">
           <h2 class="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -108,53 +131,6 @@
           </div>
         </div>
 
-        <!-- Configuration -->
-        <div class="card">
-          <h2 class="card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-            </svg>
-            Configuration
-          </h2>
-          <div class="config-info">
-            <div class="info-row">
-              <span class="label">Auto-Discovery:</span>
-              <span class="value" id="autoDiscovery">-</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Mock Mode:</span>
-              <span class="value" id="mockMode">-</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Server Port:</span>
-              <span class="value" id="serverPort">-</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Device IP:</span>
-              <span class="value" id="deviceIP">-</span>
-            </div>
-            <div class="info-row">
-              <span class="label">Device Port:</span>
-              <span class="value" id="devicePort">-</span>
-            </div>
-          </div>
-          <div class="action-buttons">
-            <button class="btn btn-primary" id="scanBtn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="m21 21-4.35-4.35"/>
-              </svg>
-              Scan Network
-            </button>
-            <button class="btn btn-secondary" id="reconnectBtn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-              </svg>
-              Reconnect
-            </button>
-          </div>
-        </div>
       </aside>
 
       <!-- Right Panel - Live Events -->
