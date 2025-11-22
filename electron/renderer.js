@@ -5,6 +5,10 @@ let totalEvents = 0;
 let todayEvents = 0;
 let socket = null;
 
+// Duplicate detection - tracks recent events to prevent duplicate processing
+const recentEvents = new Map(); // Key: userId-timestamp, Value: timestamp when added
+const DUPLICATE_WINDOW = 5000; // 5 seconds window to detect duplicates
+
 // System status tracking
 let systemStatus = {
   server: false,
@@ -771,8 +775,34 @@ function playErrorBeep() {
 function addAttendanceEvent(data) {
   console.log('Received attendance event:', data); // Debug log
 
+  // Create a unique key for this event based on user and timestamp
+  const userId = data.userId || data.biometricDeviceId || 'unknown';
+  const eventTime = new Date(data.checkInTime || data.timestamp || data.recordTime || new Date());
+  const eventKey = `${userId}-${Math.floor(eventTime.getTime() / 1000)}`; // Round to nearest second
+
+  const now = Date.now();
+
+  // Check if this is a duplicate event
+  if (recentEvents.has(eventKey)) {
+    const eventAge = now - recentEvents.get(eventKey);
+    if (eventAge < DUPLICATE_WINDOW) {
+      console.log('⚠️ Duplicate event detected and ignored:', { userId, eventKey, eventAge });
+      return; // Skip this duplicate event
+    }
+  }
+
+  // Store this event in the recent events map
+  recentEvents.set(eventKey, now);
+
+  // Clean up old entries from the map (older than DUPLICATE_WINDOW)
+  for (const [key, timestamp] of recentEvents.entries()) {
+    if (now - timestamp > DUPLICATE_WINDOW) {
+      recentEvents.delete(key);
+    }
+  }
+
   // Get user info for sound notification
-  const userName = data.name || `User ${data.userId || data.biometricDeviceId || 'Unknown'}`;
+  const userName = data.name || `User ${userId}`;
   const userStatus = data.membershipStatus || data.status || 'active';
   const membershipEndDate = data.membershipEndDate || data.membershipEnd || null;
 
