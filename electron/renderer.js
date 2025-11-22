@@ -645,13 +645,13 @@ function speakWelcome(userName, membershipStatus, membershipEndDate) {
       // ACTIVE or NO END DATE - welcome normally
       message = `${greeting} ${userName}`;
 
-      // Add expiration warning if within 30 days
+      // Add expiration warning if within 5 days
       if (daysRemaining !== null) {
         if (daysRemaining === 0) {
           message += `. Your membership expires today.`;
         } else if (daysRemaining === 1) {
           message += `. Your membership expires tomorrow.`;
-        } else if (daysRemaining > 0 && daysRemaining <= 30) {
+        } else if (daysRemaining > 0 && daysRemaining <= 5) {
           message += `. Your membership expires in ${daysRemaining} days.`;
         }
       }
