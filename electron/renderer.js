@@ -604,7 +604,7 @@ function speakWelcome(userName, membershipStatus, membershipEndDate) {
     const hour = new Date().getHours();
     let greeting;
     if (hour < 12) {
-      greeting = 'Good morning';
+      greeting = 'Good morning.';
     } else if (hour < 17) {
       greeting = 'Good afternoon';
     } else {
@@ -646,17 +646,30 @@ function speakWelcome(userName, membershipStatus, membershipEndDate) {
         message = `${greeting} ${userName}. Your membership has expired.`;
       }
     } else {
-      // ACTIVE or NO END DATE - welcome normally
-      message = `${greeting} ${userName}`;
+      // ACTIVE or NO END DATE - decide whether to include the brand welcome
+      const aboutToExpire = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
+      const hasPendingFees = typeof membershipStatus === 'string' && /pending|due|overdue|unpaid|fees/i.test(membershipStatus);
 
-      // Add expiration warning if within 5 days
+      // If user has no pending fees and membership is not about to expire, include brand welcome
+      const includeBrandWelcome = !aboutToExpire && !hasPendingFees;
+
+      if (includeBrandWelcome) {
+        message = `${greeting} ${userName}, welcome to V3 Fitness.`;
+      } else {
+        // Still provide a polite greeting but avoid the brand welcome when membership is about to expire or has pending fees
+        message = `${greeting} ${userName}.`;
+      }
+
+      // Add expiration warning if within 5 days (but do not append the brand welcome when about to expire)
       if (daysRemaining !== null) {
         if (daysRemaining === 0) {
-          message += `. Your membership expires today.`;
+          message += ` Your membership expires today.`;
         } else if (daysRemaining === 1) {
-          message += `. Your membership expires tomorrow.`;
+          message += ` Your membership expires tomorrow.`;
         } else if (daysRemaining > 0 && daysRemaining <= 5) {
-          message += `. Your membership expires in ${daysRemaining} days.`;
+          message += ` Your membership expires in ${daysRemaining} days.`;
+        } else if (daysRemaining > 0 && daysRemaining <= 30) {
+          message += ` Your membership expires in ${daysRemaining} days.`;
         }
       }
     }
