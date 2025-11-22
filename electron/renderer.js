@@ -668,8 +668,6 @@ function speakWelcome(userName, membershipStatus, membershipEndDate) {
           message += ` Your membership expires tomorrow.`;
         } else if (daysRemaining > 0 && daysRemaining <= 5) {
           message += ` Your membership expires in ${daysRemaining} days.`;
-        } else if (daysRemaining > 0 && daysRemaining <= 30) {
-          message += ` Your membership expires in ${daysRemaining} days.`;
         }
       }
     }
