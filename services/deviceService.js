@@ -20,6 +20,21 @@ let realtimeListenerSetup = false;
 let lastRealtimeEventTime = null;
 let realtimeFailureCount = 0;
 
+// Duplicate detection cache: biometricId -> last processed timestamp (ms)
+const DUPLICATE_WINDOW_MS = 60 * 1000; // 1 minute
+const RECENT_CACHE_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const recentAttendanceCache = new Map();
+
+// Periodically prune old entries from the cache to avoid memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, ts] of recentAttendanceCache.entries()) {
+    if (now - ts > RECENT_CACHE_PRUNE_INTERVAL_MS) {
+      recentAttendanceCache.delete(key);
+    }
+  }
+}, RECENT_CACHE_PRUNE_INTERVAL_MS);
+
 // Circuit breaker for device connections
 const deviceCircuitBreaker = new CircuitBreaker({
   failureThreshold: 3,
@@ -49,6 +64,23 @@ async function processAndSaveRecord(rawRecord, source, io) {
 
   const biometricId = String(userId);
   const startTime = Date.now();
+
+  // Duplicate suppression: ignore repeated authenticates for the same biometricId within the window
+  const parsedTs = Date.parse(timestamp);
+  const recordTimeMs = Number.isNaN(parsedTs) ? Date.now() : parsedTs;
+  const lastProcessed = recentAttendanceCache.get(biometricId);
+  if (lastProcessed && (recordTimeMs - lastProcessed) < DUPLICATE_WINDOW_MS) {
+    log("info", `Duplicate attendance ignored for biometricId ${biometricId} (within ${DUPLICATE_WINDOW_MS/1000}s)`);
+    io.emit("attendance_duplicate_ignored", {
+      biometricDeviceId: biometricId,
+      timestamp: timestamp,
+      windowSeconds: DUPLICATE_WINDOW_MS / 1000
+    });
+    return; // Skip duplicate
+  }
+
+  // Record this event's timestamp so subsequent duplicates within the window are ignored
+  recentAttendanceCache.set(biometricId, recordTimeMs);
 
   // Immediately emit a "processing" event for instant UI feedback
   io.emit("attendance_processing", {
