@@ -7,8 +7,13 @@ const USERS_COLLECTION = "users";
 // In-memory cache with TTL (Time To Live)
 // OPTIMIZED FOR 500 USERS: Increased cache size to 2000 (4x headroom)
 const userCache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes (increased from 5 to reduce Firestore reads)
 const MAX_CACHE_SIZE = 2000; // Increased from 1000 - all 500 users fit comfortably
+
+// Cache statistics for monitoring
+let cacheHits = 0;
+let cacheMisses = 0;
+let lastStatsReset = Date.now();
 
 /**
  * Clean expired cache entries
@@ -78,6 +83,7 @@ async function getUserByBiometricId(biometricDeviceId, skipCache = false) {
     const cached = userCache.get(cacheKey);
 
     if (now < cached.expiresAt) {
+      cacheHits++;
       log("debug", `Cache hit for biometricDeviceId: ${biometricDeviceId}`);
       return cached.data;
     } else {
@@ -89,6 +95,7 @@ async function getUserByBiometricId(biometricDeviceId, skipCache = false) {
 
   // Cache miss or expired - fetch from Firestore
   try {
+    cacheMisses++;
     log("debug", `Cache miss for biometricDeviceId: ${biometricDeviceId} - querying Firestore`);
 
     const usersRef = db.collection(USERS_COLLECTION);
@@ -226,13 +233,35 @@ function getCacheStats() {
     }
   }
 
+  const totalRequests = cacheHits + cacheMisses;
+  const hitRate = totalRequests > 0 ? ((cacheHits / totalRequests) * 100).toFixed(2) : 0;
+  const timeSinceReset = Math.round((now - lastStatsReset) / 1000 / 60); // minutes
+
   return {
     totalEntries: userCache.size,
     validEntries,
     expiredEntries,
     maxSize: MAX_CACHE_SIZE,
     ttlMs: CACHE_TTL,
+    ttlMinutes: CACHE_TTL / 60 / 1000,
+    cacheHits,
+    cacheMisses,
+    totalRequests,
+    hitRate: `${hitRate}%`,
+    timeSinceResetMinutes: timeSinceReset,
+    // Firestore read reduction estimate
+    firestoreReadsSaved: cacheHits,
   };
+}
+
+/**
+ * Reset cache statistics
+ */
+function resetCacheStats() {
+  cacheHits = 0;
+  cacheMisses = 0;
+  lastStatsReset = Date.now();
+  log("info", "Cache statistics reset");
 }
 
 module.exports = {
@@ -240,5 +269,6 @@ module.exports = {
   clearUserCache,
   invalidateUserCache,
   getCacheStats,
+  resetCacheStats,
   prewarmCache,
 };

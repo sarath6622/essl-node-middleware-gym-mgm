@@ -14,6 +14,11 @@ let isOnline = false;
 let lastSyncAttempt = null;
 let consecutiveFailures = 0;
 
+// In-memory cache for pending record count to avoid frequent getStats() calls
+let cachedPendingCount = 0;
+let lastPendingCountUpdate = null;
+const PENDING_COUNT_CACHE_TTL = 60000; // 1 minute cache
+
 const SYNC_INTERVAL = 30000; // Check every 30 seconds
 const MAX_CONSECUTIVE_FAILURES = 3;
 const BATCH_SIZE = 10; // Sync 10 records at a time
@@ -124,6 +129,10 @@ async function syncPendingRecords(io) {
     // Update pending count
     syncResults.pending = pendingRecords.length - syncResults.synced;
 
+    // Update cached pending count
+    cachedPendingCount = syncResults.pending;
+    lastPendingCountUpdate = Date.now();
+
     log('success', `✅ Sync completed: ${syncResults.synced} synced, ${syncResults.failed} failed, ${syncResults.pending} pending`);
 
     // Emit sync complete event
@@ -145,6 +154,25 @@ async function syncPendingRecords(io) {
 
     return { synced: 0, failed: 0, pending: 0, error: error.message };
   }
+}
+
+/**
+ * Get pending count efficiently (uses cache when available)
+ */
+async function getPendingCount() {
+  const now = Date.now();
+
+  // Use cached value if fresh
+  if (lastPendingCountUpdate && (now - lastPendingCountUpdate) < PENDING_COUNT_CACHE_TTL) {
+    return cachedPendingCount;
+  }
+
+  // Cache is stale, refresh it
+  const stats = await offlineStorage.getStats();
+  cachedPendingCount = stats.pendingSync;
+  lastPendingCountUpdate = now;
+
+  return cachedPendingCount;
 }
 
 /**
@@ -172,10 +200,10 @@ async function periodicSyncCheck(io) {
         io.emit('connection_status', { online: false, timestamp: new Date().toISOString() });
       }
     } else if (isOnline) {
-      // Already online - check for pending records
-      const stats = await offlineStorage.getStats();
-      if (stats.pendingSync > 0) {
-        log('info', `Found ${stats.pendingSync} pending records - syncing...`);
+      // Already online - check for pending records using cached count
+      const pendingCount = await getPendingCount();
+      if (pendingCount > 0) {
+        log('info', `Found ${pendingCount} pending records - syncing...`);
         await syncPendingRecords(io);
       }
     }

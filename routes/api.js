@@ -186,5 +186,50 @@ router.get("/metrics/performance", looseLimiter, (req, res) => {
   });
 });
 
+// Manual cache refresh endpoint
+router.post("/users/refresh-cache", strictLimiter, async (req, res) => {
+  try {
+    log("info", "Manual cache refresh triggered via API");
+    const { prewarmCache, getCacheStats } = require("../services/userService");
+
+    const startTime = Date.now();
+
+    // Trigger cache refresh
+    await prewarmCache();
+
+    const duration = Date.now() - startTime;
+    const stats = getCacheStats();
+
+    log("success", `✅ Cache refresh completed in ${duration}ms - ${stats.validEntries} users loaded`);
+
+    // Emit socket event to notify all connected clients
+    if (req.io) {
+      req.io.emit("cache_refreshed", {
+        timestamp: new Date().toISOString(),
+        usersLoaded: stats.validEntries,
+        duration,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "User cache refreshed successfully",
+      stats: {
+        usersLoaded: stats.validEntries,
+        cacheSize: stats.totalEntries,
+        duration,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    log("error", "Failed to refresh cache:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to refresh cache",
+      message: error.message,
+    });
+  }
+});
+
 module.exports = router;
 

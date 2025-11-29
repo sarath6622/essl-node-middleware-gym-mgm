@@ -42,6 +42,7 @@ const readyStatus = document.getElementById('readyStatus');
 const offlineSyncStatus = document.getElementById('offlineSyncStatus');
 const syncDetails = document.getElementById('syncDetails');
 const forceSyncBtn = document.getElementById('forceSyncBtn');
+const refreshCacheBtn = document.getElementById('refreshCacheBtn');
 
 // Initialize
 async function init() {
@@ -98,27 +99,27 @@ function setupSocketIO() {
       footerStatus.textContent = 'Socket.IO library missing';
       return;
     }
-    
+
     console.log('Connecting to Socket.IO server at http://localhost:5001');
     socket = io('http://localhost:5001');
-    
+
     socket.on('connect', () => {
       console.log('✅ Socket.IO connected to server');
       footerStatus.textContent = 'Socket.IO connected - waiting for device connection';
       updateSystemStatus('socket', true);
     });
-    
+
     socket.on('connect_error', (error) => {
       console.error('❌ Socket.IO connection error:', error);
       footerStatus.textContent = 'Socket connection error';
     });
-    
+
     socket.on('disconnect', () => {
       console.log('⚠️ Socket.IO disconnected');
       footerStatus.textContent = 'Socket disconnected';
       updateStatus('Disconnected', 'disconnected');
     });
-    
+
     socket.on('attendance_event', (data) => {
       console.log('📥 Received attendance_event from server:', data);
       addAttendanceEvent(data);
@@ -157,7 +158,7 @@ function setupSocketIO() {
     socket.onAny((eventName, ...args) => {
       console.log(`📡 Socket.IO event received: ${eventName}`, args);
     });
-    
+
     socket.on('device_status', (data) => {
       if (data.connected) {
         updateStatus('Connected', 'connected');
@@ -198,6 +199,15 @@ function setupSocketIO() {
       console.error('❌ Sync error:', data);
       updateSyncStatus();
     });
+
+    // Cache refresh event
+    socket.on('cache_refreshed', (data) => {
+      console.log('✅ Cache refreshed:', data);
+      footerStatus.textContent = `User cache refreshed - ${data.usersLoaded} users loaded in ${data.duration}ms`;
+
+      // Show success notification
+      showCacheRefreshNotification(data);
+    });
   } catch (error) {
     footerStatus.textContent = 'Socket.IO setup failed: ' + error.message;
   }
@@ -207,6 +217,7 @@ function setupSocketIO() {
 function setupEventListeners() {
   reconnectBtn.addEventListener('click', handleReconnect);
   clearBtn.addEventListener('click', handleClear);
+  refreshCacheBtn.addEventListener('click', handleRefreshCache);
   modalClose.addEventListener('click', () => {
     devicesModal.classList.remove('active');
   });
@@ -227,7 +238,7 @@ function setupIPCListeners() {
     updateSystemStatus('server', true);
     updateSystemStatus('database', true); // Firebase initializes with server
   });
-  
+
   window.electronAPI.onScanStarted(() => {
     updateStatus('Scanning network...', 'scanning');
     footerStatus.textContent = 'Scanning for devices...';
@@ -285,16 +296,16 @@ function setupIPCListeners() {
     deviceIP.textContent = data.ip || '-';
     footerStatus.textContent = `Failed to connect to ${data.ip || 'device'}`;
     updateSystemStatus('device', 'error');
-    
+
     // Show suggestions
     if (data && data.suggestions) {
-      const errorMsg = data.error 
-        ? `Connection error: ${data.error}` 
+      const errorMsg = data.error
+        ? `Connection error: ${data.error}`
         : `Could not connect to device at ${data.ip}`;
       showErrorModal('Connection Failed', errorMsg, data.suggestions);
     }
   });
-  
+
   // Listen for log messages
   window.electronAPI.onLogMessage((logData) => {
     addLogMessage(logData);
@@ -310,7 +321,7 @@ function updateStatus(text, status) {
 // Show Error Modal with Suggestions
 function showErrorModal(title, message, suggestions = []) {
   const suggestionsHTML = suggestions.map(s => `<li>${s}</li>`).join('');
-  
+
   modalBody.innerHTML = `
     <div class="error-modal-content">
       <div class="error-icon">
@@ -340,16 +351,16 @@ function showErrorModal(title, message, suggestions = []) {
       </div>
     </div>
   `;
-  
+
   // Update modal title
   const modalHeader = document.querySelector('.modal-header h2');
   if (modalHeader) {
     modalHeader.textContent = title;
   }
-  
+
   // Show modal
   devicesModal.classList.add('active');
-  
+
   // Attach retry handler
   const retryBtn = document.getElementById('retryBtn');
   if (retryBtn) {
@@ -361,21 +372,21 @@ function showErrorModal(title, message, suggestions = []) {
 function addLogMessage(logData) {
   const logEl = document.createElement('div');
   logEl.className = `log-item log-${logData.level}`;
-  
+
   logEl.innerHTML = `
     <span class="log-prefix">${logData.prefix}</span>
     <span class="log-text">${logData.message}</span>
   `;
-  
+
   // Add to logs container
   logsContainer.appendChild(logEl);
-  
+
   // Keep only last 50 log entries
   const logs = logsContainer.querySelectorAll('.log-item');
   if (logs.length > 50) {
     logs[0].remove();
   }
-  
+
   // Auto-scroll to bottom
   logsContainer.scrollTop = logsContainer.scrollHeight;
 }
@@ -385,7 +396,7 @@ function addLogMessage(logData) {
 function displayDevices(devices, connectedIP = null) {
   const deviceList = devices.map((device, index) => {
     const isConnected = connectedIP && device.ip === connectedIP;
-    
+
     return `
     <div class="device-item ${isConnected ? 'device-item-connected' : ''}">
       <div class="device-item-info">
@@ -442,7 +453,7 @@ function displayDevices(devices, connectedIP = null) {
     </div>
   `;
   }).join('');
-  
+
   modalBody.innerHTML = `
     <div class="device-list-header">
       <p>Found ${devices.length} device(s) on your network. ${connectedIP ? 'Currently connected device is highlighted.' : 'Click "Connect" to use a device.'}</p>
@@ -453,30 +464,30 @@ function displayDevices(devices, connectedIP = null) {
 }
 
 // Connect to Specific Device
-window.connectToDevice = async function(ip, index) {
+window.connectToDevice = async function (ip, index) {
   // Disable all connect buttons
   const buttons = document.querySelectorAll('.device-item .btn');
   buttons.forEach(btn => {
     btn.disabled = true;
   });
-  
+
   // Update the clicked button to show loading
   const clickedBtn = buttons[index];
   if (clickedBtn) {
     clickedBtn.innerHTML = '<span class="spinner"></span> Connecting...';
   }
-  
+
   // Close modal and update status
   setTimeout(() => {
     devicesModal.classList.remove('active');
   }, 300);
-  
+
   updateStatus('Connecting...', 'scanning');
   footerStatus.textContent = `Connecting to ${ip}...`;
-  
+
   try {
     const result = await window.electronAPI.connectToIP(ip);
-    
+
     if (result.success) {
       updateStatus('Connected', 'connected');
       deviceStatus.textContent = 'Connected';
@@ -486,7 +497,7 @@ window.connectToDevice = async function(ip, index) {
       updateStatus('Connection failed', 'disconnected');
       deviceStatus.textContent = 'Failed';
       footerStatus.textContent = `Failed to connect to ${ip}`;
-      
+
       // Show error with retry option
       setTimeout(() => {
         showErrorModal('Connection Failed', result.error || `Could not connect to device at ${ip}`, [
@@ -500,7 +511,7 @@ window.connectToDevice = async function(ip, index) {
   } catch (error) {
     updateStatus('Connection failed', 'disconnected');
     footerStatus.textContent = 'Connection error: ' + error.message;
-    
+
     setTimeout(() => {
       showErrorModal('Connection Error', `An error occurred: ${error.message}`, [
         'Check network connection',
@@ -515,17 +526,17 @@ window.connectToDevice = async function(ip, index) {
 async function handleReconnect() {
   // Close error modal if open
   devicesModal.classList.remove('active');
-  
+
   // Disable button
   reconnectBtn.disabled = true;
 
   reconnectBtn.innerHTML = '<span class="spinner"></span> Reconnecting...';
   updateStatus('Reconnecting...', 'scanning');
   footerStatus.textContent = 'Attempting to reconnect...';
-  
+
   try {
     const result = await window.electronAPI.reconnect();
-    
+
     if (result.success) {
       updateStatus('Connected', 'connected');
       deviceStatus.textContent = 'Connected';
@@ -534,7 +545,7 @@ async function handleReconnect() {
       updateStatus('Connection failed', 'disconnected');
       deviceStatus.textContent = 'Failed';
       footerStatus.textContent = 'Reconnection failed - check device and try again';
-      
+
       // Show error after a moment
       setTimeout(() => {
         showErrorModal('Reconnection Failed', 'Could not reconnect to the device.', [
@@ -548,7 +559,7 @@ async function handleReconnect() {
   } catch (error) {
     updateStatus('Connection failed', 'disconnected');
     footerStatus.textContent = 'Reconnection error: ' + error.message;
-    
+
     setTimeout(() => {
       showErrorModal('Reconnection Error', `An error occurred: ${error.message}`, [
         'Check your network connection',
@@ -589,6 +600,71 @@ function handleClear() {
   todayEvents = 0;
   updateStats();
   footerStatus.textContent = 'Events cleared';
+}
+
+// Handle Refresh User Cache
+async function handleRefreshCache() {
+  // Disable button
+  refreshCacheBtn.disabled = true;
+  refreshCacheBtn.innerHTML = '<span class="spinner"></span> Refreshing...';
+  footerStatus.textContent = 'Refreshing user cache...';
+
+  try {
+    const response = await fetch('http://localhost:5001/users/refresh-cache', {
+      method: 'POST'
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      footerStatus.textContent = `Cache refreshed - ${data.stats.usersLoaded} users loaded in ${data.stats.duration}ms`;
+
+      // Add success log
+      addLogMessage({
+        level: 'success',
+        prefix: '✅',
+        message: `User cache refreshed: ${data.stats.usersLoaded} users loaded`
+      });
+    } else {
+      footerStatus.textContent = 'Failed to refresh cache: ' + (data.message || 'Unknown error');
+
+      // Add error log
+      addLogMessage({
+        level: 'error',
+        prefix: '❌',
+        message: 'Failed to refresh user cache: ' + (data.message || 'Unknown error')
+      });
+    }
+  } catch (error) {
+    footerStatus.textContent = 'Cache refresh error: ' + error.message;
+
+    // Add error log
+    addLogMessage({
+      level: 'error',
+      prefix: '❌',
+      message: 'Cache refresh error: ' + error.message
+    });
+  } finally {
+    refreshCacheBtn.disabled = false;
+    refreshCacheBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 1l4 4-4 4"/>
+        <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <path d="M7 23l-4-4 4-4"/>
+        <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+      Refresh User Cache
+    `;
+  }
+}
+
+// Show cache refresh notification (called from socket event)
+function showCacheRefreshNotification(data) {
+  addLogMessage({
+    level: 'success',
+    prefix: '✅',
+    message: `Cache auto-refreshed: ${data.usersLoaded} users loaded in ${data.duration}ms`
+  });
 }
 
 // Text-to-Speech function to welcome user
@@ -834,16 +910,16 @@ function addAttendanceEvent(data) {
   if (emptyState) {
     emptyState.remove();
   }
-  
+
   // Create event element
   const eventEl = document.createElement('div');
   eventEl.className = 'event-item';
-  
+
   // Handle both old format (timestamp/recordTime) and new format (checkInTime)
   const timestamp = new Date(data.checkInTime || data.timestamp || data.recordTime || new Date());
   const timeStr = timestamp.toLocaleTimeString();
   const dateStr = timestamp.toLocaleDateString();
-  
+
   // Determine badge based on status
   let statusBadge, statusColor;
   if (userStatus === 'unknown') {
@@ -891,10 +967,10 @@ function addAttendanceEvent(data) {
     <div class="event-header">
       <div class="event-profile">
         ${data.profileImageUrl
-          ? `<img src="${data.profileImageUrl}" alt="${userName}" class="event-profile-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      ? `<img src="${data.profileImageUrl}" alt="${userName}" class="event-profile-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
              <div class="event-profile-placeholder" style="display: none;">${initials}</div>`
-          : `<div class="event-profile-placeholder">${initials}</div>`
-        }
+      : `<div class="event-profile-placeholder">${initials}</div>`
+    }
       </div>
       <div class="event-info">
         <div class="event-user">${userName}</div>
@@ -923,10 +999,10 @@ function addAttendanceEvent(data) {
       </div>
     </div>
   `;
-  
+
   // Add to top of list
   eventsContainer.insertBefore(eventEl, eventsContainer.firstChild);
-  
+
   // Update statistics
   totalEvents++;
   const today = new Date().toDateString();
@@ -934,13 +1010,13 @@ function addAttendanceEvent(data) {
     todayEvents++;
   }
   updateStats();
-  
+
   // Keep only last 100 events
   const events = eventsContainer.querySelectorAll('.event-item');
   if (events.length > 100) {
     events[events.length - 1].remove();
   }
-  
+
   footerStatus.textContent = `Latest: ${userName} at ${timeStr}`;
 }
 

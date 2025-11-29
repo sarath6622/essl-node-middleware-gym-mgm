@@ -11,7 +11,7 @@ class OfflineStorageService {
   constructor() {
     // Store offline data in user's app data directory
     const appDataPath = process.env.APPDATA ||
-                        (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
+      (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
     this.storageDir = path.join(appDataPath, 'ZK-Attendance', 'offline-data');
     this.attendanceFile = path.join(this.storageDir, 'pending-attendance.json');
     this.cacheFile = path.join(this.storageDir, 'users-cache.json');
@@ -162,19 +162,26 @@ class OfflineStorageService {
 
   /**
    * Get cached users
+   * @param {boolean} silent - If true, suppress logging (useful for frequent calls)
    * @returns {Array} Array of cached user objects
    */
-  async getCachedUsers() {
+  async getCachedUsers(silent = false) {
     await this.initialize();
 
     try {
       const data = await fs.readFile(this.cacheFile, 'utf-8');
       const cacheData = JSON.parse(data);
 
-      log('info', `📦 Retrieved ${cacheData.users.length} users from cache (cached at: ${cacheData.cachedAt})`);
+      // Use debug level instead of info to reduce log noise
+      // This is reading from LOCAL DISK, not Firestore
+      if (!silent) {
+        log('debug', `📦 Retrieved ${cacheData.users.length} users from local cache file (cached at: ${cacheData.cachedAt})`);
+      }
       return cacheData.users;
     } catch (error) {
-      log('warning', 'No cached users available');
+      if (!silent) {
+        log('debug', 'No cached users available in local storage');
+      }
       return [];
     }
   }
@@ -188,7 +195,8 @@ class OfflineStorageService {
 
     try {
       const attendanceData = await this.getPendingAttendance();
-      const cachedUsers = await this.getCachedUsers();
+      // Use silent=true to prevent logging every time stats are checked
+      const cachedUsers = await this.getCachedUsers(true);
 
       return {
         pendingSync: attendanceData.length,
