@@ -8,6 +8,9 @@ const log = require("../utils/logger");
 // Store request counts per IP
 const requestCounts = new Map();
 
+// MEMORY OPTIMIZATION: Prevent unbounded Map growth
+const MAX_TRACKED_IPS = 1000; // Limit to 1000 IPs (prevents memory leak)
+
 // Rate limit configurations
 const RATE_LIMITS = {
   default: {
@@ -43,8 +46,9 @@ function cleanupExpiredEntries() {
   }
 }
 
-// Run cleanup every 5 minutes
-setInterval(cleanupExpiredEntries, 5 * 60 * 1000);
+// MEMORY OPTIMIZATION: More frequent cleanup (every 1 minute instead of 5)
+// Prevents memory bloat from accumulating expired entries
+setInterval(cleanupExpiredEntries, 60 * 1000);
 
 /**
  * Get client identifier (IP address)
@@ -59,6 +63,32 @@ function getClientId(req) {
 }
 
 /**
+ * Evict oldest entries if size limit exceeded
+ * MEMORY OPTIMIZATION: Prevents unbounded Map growth
+ */
+function evictOldestIfNeeded() {
+  if (requestCounts.size >= MAX_TRACKED_IPS) {
+    // First try cleanup
+    cleanupExpiredEntries();
+
+    // If still over limit, remove oldest entries (LRU eviction)
+    if (requestCounts.size >= MAX_TRACKED_IPS) {
+      const entriesToRemove = Math.min(100, requestCounts.size - MAX_TRACKED_IPS + 100);
+
+      // Sort by resetTime (oldest first)
+      const sortedEntries = Array.from(requestCounts.entries())
+        .sort((a, b) => a[1].resetTime - b[1].resetTime);
+
+      for (let i = 0; i < entriesToRemove; i++) {
+        requestCounts.delete(sortedEntries[i][0]);
+      }
+
+      log("warning", `Rate limiter: Evicted ${entriesToRemove} oldest entries (size limit: ${MAX_TRACKED_IPS})`);
+    }
+  }
+}
+
+/**
  * Create rate limiter middleware
  * @param {string} limitType - Type of limit: 'default', 'strict', or 'loose'
  * @param {object} customConfig - Optional custom configuration
@@ -70,6 +100,9 @@ function createRateLimiter(limitType = "default", customConfig = {}) {
   return function rateLimiterMiddleware(req, res, next) {
     const clientId = getClientId(req);
     const now = Date.now();
+
+    // MEMORY OPTIMIZATION: Check size limit before adding new entries
+    evictOldestIfNeeded();
 
     // Get or create client record
     let clientData = requestCounts.get(clientId);

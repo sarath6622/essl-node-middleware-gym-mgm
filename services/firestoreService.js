@@ -4,32 +4,35 @@ const log = require("../utils/logger");
 const ATTENDANCE_COLLECTION = "attendance_logs";
 
 // Batch write queue
+// OPTIMIZED FOR PEAK HOURS: Faster timeout and concurrent batch support
 const writeQueue = [];
 const BATCH_SIZE = 500; // Firestore max batch size
-const BATCH_TIMEOUT = 2000; // 2 seconds max wait before forcing flush
+const BATCH_TIMEOUT = 1000; // Reduced from 2000ms - faster writes during bursts
+const MAX_CONCURRENT_BATCHES = 2; // Allow 2 concurrent batches
 let batchTimer = null;
-let isFlushing = false;
+let activeBatches = 0;
 
 /**
  * Flush the write queue using Firestore batch operations
  */
 async function flushBatchQueue() {
-  if (isFlushing || writeQueue.length === 0) {
+  // Check if we can start a new batch
+  if (activeBatches >= MAX_CONCURRENT_BATCHES || writeQueue.length === 0) {
     return;
   }
 
-  isFlushing = true;
+  activeBatches++;
 
   try {
     // Take items from queue
     const itemsToWrite = writeQueue.splice(0, BATCH_SIZE);
 
     if (itemsToWrite.length === 0) {
-      isFlushing = false;
+      activeBatches--;
       return;
     }
 
-    log("info", `🔄 Flushing ${itemsToWrite.length} records to Firestore in batch...`);
+    log("info", `🔄 Flushing ${itemsToWrite.length} records to Firestore in batch (${activeBatches} active batches)...`);
 
     // Process in batches of 500 (Firestore limit)
     const batch = db.batch();
@@ -76,10 +79,10 @@ async function flushBatchQueue() {
       }
     }
   } finally {
-    isFlushing = false;
+    activeBatches--;
 
-    // If there are still items in queue, schedule next flush
-    if (writeQueue.length > 0) {
+    // If there are still items in queue and we have capacity, schedule next flush
+    if (writeQueue.length > 0 && activeBatches < MAX_CONCURRENT_BATCHES) {
       setImmediate(() => flushBatchQueue());
     }
   }
@@ -163,7 +166,8 @@ async function flushPendingWrites() {
 function getBatchStats() {
   return {
     queueSize: writeQueue.length,
-    isFlushing,
+    activeBatches,
+    maxConcurrentBatches: MAX_CONCURRENT_BATCHES,
     batchSize: BATCH_SIZE,
     batchTimeout: BATCH_TIMEOUT,
   };

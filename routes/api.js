@@ -79,53 +79,53 @@ router.get("/attendance/logs", strictLimiter, async (req, res) => {
 });
 
 router.get("/device/info", defaultLimiter, async (req, res) => {
-    const { isConnected, getZkInstance } = req.deviceService;
-    if (DEVICE_CONFIG.useMockDevice) {
-        return res.json({ success: true, message: "Mock device has no specific device info.", data: { mock: true, model: 'MockDevice-v1' } });
-    }
+  const { isConnected, getZkInstance } = req.deviceService;
+  if (DEVICE_CONFIG.useMockDevice) {
+    return res.json({ success: true, message: "Mock device has no specific device info.", data: { mock: true, model: 'MockDevice-v1' } });
+  }
 
-    if (!isConnected() || !getZkInstance()) {
-        return res.status(503).json({ error: "Device not connected" });
-    }
+  if (!isConnected() || !getZkInstance()) {
+    return res.status(503).json({ error: "Device not connected" });
+  }
 
-    try {
-        const info = await getZkInstance().getInfo();
-        res.json({ success: true, data: info });
-    } catch (err) {
-        res.status(500).json({ error: "Failed to retrieve device information", message: err.message });
-    }
+  try {
+    const info = await getZkInstance().getInfo();
+    res.json({ success: true, data: info });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to retrieve device information", message: err.message });
+  }
 });
 
 router.get("/device/scan", strictLimiter, async (req, res) => {
-    try {
-        log("info", "Device scan triggered via API...");
-        const devices = await scanForDevices(false);
-        
-        if (devices.length === 0) {
-            log("warn", "No devices found during network scan");
-            return res.json({
-                success: true,
-                count: 0,
-                devices: [],
-                message: "No fingerprint devices found on the network. Ensure device is powered on and connected to the same network."
-            });
-        }
-        
-        log("success", `Found ${devices.length} device(s) during scan`);
-        res.json({
-            success: true,
-            count: devices.length,
-            devices: devices,
-            message: `Found ${devices.length} device(s) with port 4370 open`
-        });
-    } catch (err) {
-        log("error", "Device scan failed:", err.message);
-        res.status(500).json({
-            success: false,
-            error: "Device scan failed",
-            message: err.message
-        });
+  try {
+    log("info", "Device scan triggered via API...");
+    const devices = await scanForDevices(false);
+
+    if (devices.length === 0) {
+      log("warn", "No devices found during network scan");
+      return res.json({
+        success: true,
+        count: 0,
+        devices: [],
+        message: "No fingerprint devices found on the network. Ensure device is powered on and connected to the same network."
+      });
     }
+
+    log("success", `Found ${devices.length} device(s) during scan`);
+    res.json({
+      success: true,
+      count: devices.length,
+      devices: devices,
+      message: `Found ${devices.length} device(s) with port 4370 open`
+    });
+  } catch (err) {
+    log("error", "Device scan failed:", err.message);
+    res.status(500).json({
+      success: false,
+      error: "Device scan failed",
+      message: err.message
+    });
+  }
 });
 
 router.post("/polling/start", defaultLimiter, (req, res) => {
@@ -149,6 +149,33 @@ router.get("/stats/performance", looseLimiter, (req, res) => {
     success: true,
     timestamp: new Date().toISOString(),
     stats: {
+      userCache: getCacheStats(),
+      firestoreBatch: getBatchStats(),
+      enrollmentQueue: getEnrollmentQueueStats(),
+      rateLimiter: getRateLimiterStats(),
+      polling: req.deviceService.getPollingStats(),
+      circuitBreaker: req.deviceService.getCircuitBreakerState(),
+    },
+  });
+});
+
+// New comprehensive performance monitoring endpoint
+router.get("/metrics/performance", looseLimiter, (req, res) => {
+  const { getCacheStats } = require("../services/userService");
+  const { getBatchStats } = require("../services/firestoreService");
+  const { getEnrollmentQueueStats } = require("../services/memberEnrollmentService");
+  const { getRateLimiterStats } = require("../middleware/rateLimiter");
+  const { getMetrics } = require("../utils/performanceMonitor");
+
+  res.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    metrics: {
+      // NEW: Attendance queue and event loop metrics
+      performance: getMetrics(),
+      attendanceQueue: req.deviceService.getAttendanceQueueStats(),
+
+      // Existing metrics
       userCache: getCacheStats(),
       firestoreBatch: getBatchStats(),
       enrollmentQueue: getEnrollmentQueueStats(),

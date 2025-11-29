@@ -6,6 +6,7 @@ const { getUserByBiometricId } = require("./userService");
 const { getDateInTimezone } = require("../utils/dateUtils");
 const { retryWithBackoff, CircuitBreaker } = require("../utils/retryHelper");
 const offlineStorage = require("./offlineStorage");
+const performanceMonitor = require("../utils/performanceMonitor");
 const EventEmitter = require("events");
 
 // Increase default max listeners globally to prevent warnings
@@ -22,16 +23,32 @@ let realtimeFailureCount = 0;
 
 // Duplicate detection cache: biometricId -> last processed timestamp (ms)
 const DUPLICATE_WINDOW_MS = 60 * 1000; // 1 minute
-const RECENT_CACHE_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const RECENT_CACHE_PRUNE_INTERVAL_MS = 60 * 1000; // MEMORY OPTIMIZATION: 1 minute (was 5 minutes)
+const MAX_RECENT_CACHE_SIZE = 1000; // MEMORY OPTIMIZATION: Prevent unbounded growth
 const recentAttendanceCache = new Map();
 
-// Periodically prune old entries from the cache to avoid memory growth
+// MEMORY OPTIMIZATION: More frequent cleanup and size limit
 setInterval(() => {
   const now = Date.now();
+
+  // Remove expired entries
   for (const [key, ts] of recentAttendanceCache.entries()) {
-    if (now - ts > RECENT_CACHE_PRUNE_INTERVAL_MS) {
+    if (now - ts > DUPLICATE_WINDOW_MS) {
       recentAttendanceCache.delete(key);
     }
+  }
+
+  // If still too large, remove oldest entries (LRU eviction)
+  if (recentAttendanceCache.size > MAX_RECENT_CACHE_SIZE) {
+    const sortedEntries = Array.from(recentAttendanceCache.entries())
+      .sort((a, b) => a[1] - b[1]); // Sort by timestamp (oldest first)
+
+    const toRemove = recentAttendanceCache.size - MAX_RECENT_CACHE_SIZE;
+    for (let i = 0; i < toRemove; i++) {
+      recentAttendanceCache.delete(sortedEntries[i][0]);
+    }
+
+    log("warning", `Duplicate cache: Evicted ${toRemove} oldest entries (size limit: ${MAX_RECENT_CACHE_SIZE})`);
   }
 }, RECENT_CACHE_PRUNE_INTERVAL_MS);
 
@@ -47,6 +64,80 @@ const POLLING_INTERVAL = 10000; // 10 seconds
 const REALTIME_TIMEOUT = 60000; // If no real-time event in 60s, assume failure (increased from 30s)
 const MAX_REALTIME_FAILURES = 3; // After 3 failures, switch to polling mode
 let permanentPollingMode = false; // Once we switch to polling, stay there
+
+// ========================================
+// CRITICAL FIX: Async Event Queue
+// ========================================
+// This queue prevents event loop blocking during peak hours
+// Events are queued immediately and processed in background
+const attendanceEventQueue = [];
+let isProcessingQueue = false;
+const QUEUE_BATCH_SIZE = 10; // Process 10 events at a time
+const QUEUE_PROCESS_DELAY = 100; // 100ms delay between batches
+
+/**
+ * Process the attendance event queue in background
+ * This prevents blocking the event loop during peak hours
+ */
+async function processAttendanceQueue(io) {
+  if (isProcessingQueue || attendanceEventQueue.length === 0) {
+    return;
+  }
+
+  isProcessingQueue = true;
+
+  try {
+    while (attendanceEventQueue.length > 0) {
+      // Take batch from queue
+      const batch = attendanceEventQueue.splice(0, QUEUE_BATCH_SIZE);
+
+      // Update performance metrics
+      performanceMonitor.updateQueueSize(attendanceEventQueue.length);
+
+      log("debug", `📦 Processing ${batch.length} attendance events (${attendanceEventQueue.length} remaining in queue)`);
+
+      // Process batch in parallel for maximum throughput
+      const startTime = Date.now();
+      await Promise.all(
+        batch.map(({ data, source }) =>
+          processAndSaveRecord(data, source, io).catch((err) => {
+            log("error", `Failed to process attendance event:`, err.message);
+          })
+        )
+      );
+
+      const batchTime = Date.now() - startTime;
+      performanceMonitor.recordProcessingTime(batchTime / batch.length);
+
+      // Small delay between batches to prevent overwhelming the system
+      if (attendanceEventQueue.length > 0) {
+        await new Promise((resolve) => setTimeout(resolve, QUEUE_PROCESS_DELAY));
+      }
+    }
+  } finally {
+    isProcessingQueue = false;
+
+    // Update final queue size
+    performanceMonitor.updateQueueSize(attendanceEventQueue.length);
+
+    // If more items added while processing, schedule next run
+    if (attendanceEventQueue.length > 0) {
+      setImmediate(() => processAttendanceQueue(io));
+    }
+  }
+}
+
+/**
+ * Queue an attendance event for background processing
+ * This is NON-BLOCKING and returns immediately
+ */
+function queueAttendanceEvent(data, source, io) {
+  attendanceEventQueue.push({ data, source, timestamp: Date.now() });
+  performanceMonitor.updateQueueSize(attendanceEventQueue.length);
+
+  // Trigger processing (non-blocking)
+  setImmediate(() => processAttendanceQueue(io));
+}
 
 // Helper to process and enrich attendance data
 async function processAndSaveRecord(rawRecord, source, io) {
@@ -70,8 +161,8 @@ async function processAndSaveRecord(rawRecord, source, io) {
   const recordTimeMs = Number.isNaN(parsedTs) ? Date.now() : parsedTs;
   const lastProcessed = recentAttendanceCache.get(biometricId);
   if (lastProcessed && (recordTimeMs - lastProcessed) < DUPLICATE_WINDOW_MS) {
-    log("info", `Duplicate attendance ignored for biometricId ${biometricId} (within ${DUPLICATE_WINDOW_MS/1000}s)`);
-    io.emit("attendance_duplicate_ignored", {
+    log("info", `Duplicate attendance ignored for biometricId ${biometricId} (within ${DUPLICATE_WINDOW_MS / 1000}s)`);
+    io.to("attendance").emit("attendance_duplicate_ignored", {
       biometricDeviceId: biometricId,
       timestamp: timestamp,
       windowSeconds: DUPLICATE_WINDOW_MS / 1000
@@ -83,7 +174,8 @@ async function processAndSaveRecord(rawRecord, source, io) {
   recentAttendanceCache.set(biometricId, recordTimeMs);
 
   // Immediately emit a "processing" event for instant UI feedback
-  io.emit("attendance_processing", {
+  // CRITICAL FIX: Use room-based broadcast instead of io.emit() for better performance
+  io.to("attendance").emit("attendance_processing", {
     biometricDeviceId: biometricId,
     timestamp: timestamp,
     status: "processing"
@@ -120,8 +212,8 @@ async function processAndSaveRecord(rawRecord, source, io) {
 
     log("event", `📥 Attendance event for unknown user: ${biometricId}`, attendanceRecord);
 
-    // Emit to UI immediately
-    io.emit("attendance_event", attendanceRecord);
+    // Emit to UI immediately - use room-based broadcast
+    io.to("attendance").emit("attendance_event", attendanceRecord);
     return;
   }
 
@@ -147,8 +239,8 @@ async function processAndSaveRecord(rawRecord, source, io) {
   const totalTime = Date.now() - startTime;
   log("event", `✅ Processed attendance for ${attendanceRecord.name} (lookup: ${lookupTime}ms, total: ${totalTime}ms)`);
 
-  // Emit to UI immediately (don't wait for Firestore save)
-  io.emit("attendance_event", attendanceRecord);
+  // Emit to UI immediately (don't wait for Firestore save) - use room-based broadcast
+  io.to("attendance").emit("attendance_event", attendanceRecord);
 
   // Save to Firestore in background (don't await)
   saveAttendanceRecord(attendanceRecord).catch(async err => {
@@ -159,15 +251,15 @@ async function processAndSaveRecord(rawRecord, source, io) {
     const offlineSaved = await offlineStorage.saveOfflineAttendance(attendanceRecord);
 
     if (offlineSaved) {
-      // Emit offline event so UI can show offline indicator
-      io.emit("attendance_saved_offline", {
+      // Emit offline event so UI can show offline indicator - use room-based broadcast
+      io.to("attendance").emit("attendance_saved_offline", {
         userId: attendanceRecord.userId,
         name: attendanceRecord.name,
         timestamp: attendanceRecord.checkInTime
       });
     } else {
-      // Emit error event if both Firebase and offline storage failed
-      io.emit("attendance_save_failed", {
+      // Emit error event if both Firebase and offline storage failed - use room-based broadcast
+      io.to("attendance").emit("attendance_save_failed", {
         userId: attendanceRecord.userId,
         name: attendanceRecord.name,
         error: err.message
@@ -344,7 +436,9 @@ function setupRealtimeListener(io) {
 
     // Wrap getRealTimeLogs in a try-catch to handle errors gracefully
     try {
-      zk.getRealTimeLogs(async (data) => {
+      // CRITICAL FIX: Non-blocking real-time listener
+      // Queue events immediately instead of awaiting processing
+      zk.getRealTimeLogs((data) => {
         // Log full raw data for debugging
         console.log("📥 Raw device data:", JSON.stringify(data));
 
@@ -362,15 +456,16 @@ function setupRealtimeListener(io) {
           // Check for failed/unrecognized fingerprint (userId is often 0 or -1 for failed scans)
           if (userId === 0 || userId === -1 || userId === "0" || userId === "-1") {
             log("warning", "❌ Fingerprint not recognized - scan failed");
-            io.emit("fingerprint_failed", {
+            io.to("attendance").emit("fingerprint_failed", {
               timestamp: new Date().toISOString(),
               message: "Fingerprint not recognized"
             });
             return;
           }
 
-          log("event", "🎯 Processing attendance event - User ID:", userId);
-          await processAndSaveRecord(data, "essl-realtime", io);
+          log("event", "🎯 Queueing attendance event - User ID:", userId);
+          // CRITICAL: Queue the event instead of awaiting - prevents event loop blocking
+          queueAttendanceEvent(data, "essl-realtime", io);
         } else {
           // Skip non-attendance events (heartbeats, device status, etc.)
           // But we still updated lastRealtimeEventTime above to show real-time is working
@@ -509,12 +604,12 @@ async function disconnectFromDevice() {
   if (isConnected && zk) {
     try {
       log("info", "Disconnecting from device...");
-      
+
       // Remove all listeners first
       if (zk.socket) {
         zk.socket.removeAllListeners();
       }
-      
+
       // Try graceful disconnect first
       try {
         await zk.disconnect();
@@ -524,11 +619,11 @@ async function disconnectFromDevice() {
           zk.socket.destroy();
         }
       }
-      
+
       realtimeListenerSetup = false; // Reset flag for potential reconnection
       isConnected = false;
       zk = null;
-      
+
       log("success", "Device disconnected successfully");
     } catch (err) {
       log("error", "Error disconnecting:", err.message);
@@ -569,6 +664,17 @@ function getPollingStats() {
   };
 }
 
+/**
+ * Get attendance queue stats
+ */
+function getAttendanceQueueStats() {
+  return {
+    queueSize: attendanceEventQueue.length,
+    isProcessing: isProcessingQueue,
+    batchSize: QUEUE_BATCH_SIZE,
+  };
+}
+
 module.exports = {
   connectToDevice,
   startPolling,
@@ -579,4 +685,5 @@ module.exports = {
   getCircuitBreakerState,
   resetCircuitBreaker,
   getPollingStats,
+  getAttendanceQueueStats,
 };

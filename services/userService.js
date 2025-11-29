@@ -5,9 +5,10 @@ const offlineStorage = require("./offlineStorage");
 const USERS_COLLECTION = "users";
 
 // In-memory cache with TTL (Time To Live)
+// OPTIMIZED FOR 500 USERS: Increased cache size to 2000 (4x headroom)
 const userCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const MAX_CACHE_SIZE = 1000; // Prevent unlimited memory growth
+const MAX_CACHE_SIZE = 2000; // Increased from 1000 - all 500 users fit comfortably
 
 /**
  * Clean expired cache entries
@@ -53,8 +54,8 @@ function evictOldestIfNeeded() {
   }
 }
 
-// Run cache cleanup every 10 minutes
-setInterval(cleanExpiredCache, 10 * 60 * 1000);
+// Run cache cleanup every 5 minutes (reduced from 10 for faster memory management)
+setInterval(cleanExpiredCache, 5 * 60 * 1000);
 
 /**
  * Fetches user details from Firestore based on the biometric device ID.
