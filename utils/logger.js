@@ -7,6 +7,7 @@ let electronWindow = null;
 let currentLogFile = null;
 let currentLogHour = null;
 let logStream = null;
+let socketIo = null;
 
 // Base directory for logs
 const LOG_BASE_DIR = path.join(process.cwd(), 'logs');
@@ -14,6 +15,10 @@ const LOG_BASE_DIR = path.join(process.cwd(), 'logs');
 function setElectronWindow(window) {
   electronWindow = window;
   silentMode = true; // Enable silent mode when Electron window is set
+}
+
+function setSocket(io) {
+  socketIo = io;
 }
 
 /**
@@ -144,7 +149,18 @@ function log(level, message, data = null) {
       data
     });
   }
-
+  
+  // Send via Socket.IO if available (for Tauri/Sidecar mode)
+  if (socketIo) {
+    socketIo.emit('log-message', {
+      level,
+      message,
+      prefix,
+      timestamp,
+      data
+    });
+  }
+  
   // Only log to console if not in silent mode
   if (!silentMode) {
     console.log(`[${timestamp}] ${prefix} ${message}`);
@@ -177,4 +193,5 @@ process.on('SIGTERM', () => {
 
 module.exports = log;
 module.exports.setElectronWindow = setElectronWindow;
+module.exports.setSocket = setSocket;
 module.exports.closeLogStream = closeLogStream;

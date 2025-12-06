@@ -39,6 +39,55 @@ router.get("/status", defaultLimiter, (req, res) => {
   });
 });
 
+router.get("/config", looseLimiter, (req, res) => {
+  res.json({
+    success: true,
+    config: {
+      useMockDevice: DEVICE_CONFIG.useMockDevice,
+      autoDiscoverDevice: DEVICE_CONFIG.autoDiscoverDevice,
+      ip: DEVICE_CONFIG.ip,
+      port: DEVICE_CONFIG.port,
+      timezone: DEVICE_CONFIG.timezone
+    }
+  });
+});
+
+router.post("/device/connect", strictLimiter, async (req, res) => {
+  const { ip } = req.body;
+  if (!ip) {
+    return res.status(400).json({ success: false, error: "IP address is required" });
+  }
+
+  log("info", `Manual connection request to ${ip}`);
+  
+  // Update config
+  DEVICE_CONFIG.ip = ip;
+
+  try {
+    // Disconnect if connected
+    if (req.deviceService.isConnected && req.deviceService.isConnected()) {
+      await req.deviceService.disconnectFromDevice();
+    }
+
+    const linked = await req.deviceService.connectToDevice(req.io);
+    
+    if (linked && !DEVICE_CONFIG.useMockDevice) {
+       // Initialize Firebase listener
+       const { initializeMemberEnrollmentListener } = require("../services/memberEnrollmentService");
+       initializeMemberEnrollmentListener(req.deviceService);
+       
+       // Start polling fallback
+       setTimeout(() => {
+         req.deviceService.startPolling(req.io);
+       }, 10000);
+    }
+
+    res.json({ success: linked, connected: linked });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get("/reconnect", strictLimiter, async (req, res) => {
   log("info", "Manual reconnection triggered via API");
   const success = await req.deviceService.connectToDevice(req.io);
@@ -136,6 +185,36 @@ router.post("/polling/start", defaultLimiter, (req, res) => {
 router.post("/polling/stop", defaultLimiter, (req, res) => {
   req.deviceService.stopPolling();
   res.json({ success: true, message: "Polling stopped" });
+});
+
+router.get("/stats/offline", looseLimiter, async (req, res) => {
+  try {
+    const offlineStorage = require("../services/offlineStorage");
+    const stats = await offlineStorage.getStats();
+    res.json({ success: true, stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get("/sync/status", looseLimiter, async (req, res) => {
+  try {
+    const syncService = require("../services/syncService");
+    const status = await syncService.getSyncStatus();
+    res.json({ success: true, status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post("/sync/force", strictLimiter, async (req, res) => {
+  try {
+    const syncService = require("../services/syncService");
+    const result = await syncService.forceSyncNow(req.io);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Performance monitoring endpoints

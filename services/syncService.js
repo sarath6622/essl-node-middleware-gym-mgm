@@ -47,12 +47,14 @@ async function checkFirebaseConnection() {
 async function syncSingleRecord(record) {
   try {
     // Remove offline metadata before saving to Firebase
-    const { offlineTimestamp, syncStatus, syncedAt, ...attendanceData } = record;
+    // dbId is internal SQLite ID, offlineTimestamp is the legacy field
+    const { dbId, offlineTimestamp, syncStatus, syncedAt, ...attendanceData } = record;
 
     await saveAttendanceRecord(attendanceData);
     log('success', `✅ Synced offline record: ${attendanceData.name || attendanceData.userId}`);
 
-    return { success: true, id: offlineTimestamp };
+    // Return the DB ID so we can mark it as synced in SQLite
+    return { success: true, id: dbId || offlineTimestamp };
   } catch (error) {
     log('error', `Failed to sync record: ${error.message}`);
     return { success: false, error: error.message };

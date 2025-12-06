@@ -1,0 +1,76 @@
+{
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "devPath": "../electron",
+    "distDir": "../electron",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "zk-attendance-desktop",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true,
+        "sidecar": true,
+        "scope": [
+            { "name": "binaries/backend", "sidecar": true, "args": true },
+            { "name": "node", "cmd": "node", "args": true }
+        ]
+      },
+      "http": {
+        "all": true,
+        "request": true,
+        "scope": ["http://localhost:5001/*"]
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "DeveloperTool",
+      "copyright": "",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [
+        "binaries/backend"
+      ],
+      "icon": [],
+      "identifier": "com.zkattendance.desktop",
+      "longDescription": "",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "",
+      "targets": "all",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": null
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "resizable": true,
+        "title": "ZK Attendance Monitor",
+        "width": 1200
+      }
+    ]
+  }
+}

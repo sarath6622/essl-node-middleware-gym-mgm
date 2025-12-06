@@ -1,5 +1,22 @@
-// Electron Main Process
 const { app, BrowserWindow, ipcMain, Menu, Tray } = require('electron');
+const fs = require('fs');
+const path = require('path');
+
+// DEBUG LOGGING
+function debugLog(msg) {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'sidecar_debug.log');
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch (e) {
+    // ignore
+  }
+}
+
+debugLog('Starting main.js...');
+process.on('uncaughtException', (err) => {
+  debugLog(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
+  process.exit(1);
+});
 const path = require('path');
 const http = require('http');
 const express = require('express');

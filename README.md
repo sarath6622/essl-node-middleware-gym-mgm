@@ -1,319 +1,88 @@
-# ZK Attendance Monitor
+# ZK Attendance Desktop App (Tauri Edition)
 
-A powerful middleware and desktop application for ZK Teco fingerprint devices with real-time attendance monitoring, auto-enrollment, and Firebase integration.
+A strictly offline, local-first desktop application for managing ZKTeco biometric attendance devices. Built with **Tauri**, **Node.js**, **Express**, and **SQLite**.
 
-## 🌟 Features
+## Features
 
-- ✨ **Desktop Application** - Beautiful cross-platform Electron app with modern UI
-- 🔄 **Real-time Monitoring** - Live attendance events via Socket.IO
-- 📡 **Auto-Discovery** - Automatically find devices on your network
-- 🔥 **Firebase Integration** - Auto-enrollment from Firebase Realtime Database
-- 📊 **Live Statistics** - Track attendance events in real-time
-- 🎯 **Mock Mode** - Development mode without physical device
-- 🌐 **REST API** - Full-featured API for integration
-- 👥 **User Management** - Add, delete, and manage users
-- 🔍 **Network Scanner** - Find devices across your local network
+-   **Real-time Attendance Monitoring**: View check-ins as they happen via Socket.IO.
+-   **Hardware Integration**: Direct communication with ZKTeco devices (e.g., eSSL K30 Pro) over UDP/TCP.
+-   **Offline First**: All data stored locally in SQLite (`better-sqlite3`).
+-   **Firebase Sync**: Background synchronization with Firestore for cloud backups (optional).
+-   **User Management**: Text-to-Speech welcome messages and membership expiry alerts.
 
-## 🚀 Quick Start
+## Prerequisites
 
-### Installation
+-   **Node.js**: v18 or newer (v20+ recommended).
+-   **Rust**: Required for building Tauri. Install via `rustup` (https://rustup.rs/).
+-   **Build Tools**:
+    -   **Windows**: Microsoft Visual Studio C++ Build Tools.
+    -   **macOS**: Xcode Command Line Tools.
+    -   **Linux**: `build-essential`, `libwebkit2gtk-4.0-dev`, `libappindicator3-dev`.
 
-```bash
-# Clone or download the repository
-cd Middleware
+## Installation
 
-# Install dependencies
-npm install
-```
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository-url>
+    cd zk-attendance-desktop
+    ```
 
-### Choose Your Mode
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    # Enter the src-tauri directory and install Rust dependencies (happens automatically on build, but good to check)
+    cd src-tauri
+    cargo check
+    cd ..
+    ```
 
-#### Option 1: Desktop Application (Recommended)
+## Development
 
-Run the modern desktop app with GUI:
-
-```bash
-npm run electron
-```
-
-**Features:**
-- Beautiful dark-themed interface
-- Real-time event visualization
-- System tray integration
-- Network scanner built-in
-- One-click device discovery
-
-See [ELECTRON_APP.md](ELECTRON_APP.md) for complete desktop app documentation.
-
-#### Option 2: Command-Line Interface
-
-Run as a traditional Node.js server:
+Run the application in development mode with hot-reloading:
 
 ```bash
-npm start
+npm run tauri dev
+# OR directly:
+npx tauri dev
 ```
 
-**Features:**
-- Headless operation
-- Perfect for servers
-- Lower resource usage
-- All API endpoints available
+**Note**: In development, the backend server is spawned efficiently using `std::process::Command` to avoid packaging overhead.
 
-## 📦 Building Desktop App
+### Mock Mode (No Device)
 
-### For Your Platform
+To test the UI without a physical biometric device:
+1.  Open `config/deviceConfig.js`.
+2.  Set `useMockDevice: true`.
+3.  Restart the app. It will simulate device connection and attendance events.
+
+## Building for Production
+
+Create an optimized, native executable installer:
 
 ```bash
-npm run build
+npm run tauri build
+# OR directly:
+npx tauri build
 ```
 
-### For Specific Platforms
+The installer will be located in `src-tauri/target/release/bundle/msi` (Windows) or `dmg` (macOS).
 
-```bash
-# macOS
-npm run build:mac
+## Architecture
 
-# Windows
-npm run build:win
+-   **Frontend**: HTML/JS/CSS running in a Tauri webview.
+-   **Backend**: A standalone Node.js Express server (`services/backend-server.js`) packaged as a **Sidecar**.
+-   **Communication**:
+    -   Frontend -> Backend: HTTP (REST API).
+    -   Backend -> Frontend: Socket.IO (Real-time events).
 
-# Linux
-npm run build:linux
+## Troubleshooting
 
-# All platforms
-npm run dist
-```
+-   **"Failed to connect to backend"**: Ensure port `5001` is free. Check `src-tauri/src/main.rs` logs in the terminal.
+-   **Device not found**:
+    -   Verify the device IP in `config/deviceConfig.js`.
+    -   Ensure the computer and device are on the same subnet.
+    -   Disable firewall/antivirus temporarily to test UDP discovery.
 
-Built applications will be in the `dist/` folder.
+## License
 
-### ⚠️ Important: Windows Firewall Setup (Required for Built Apps)
-
-**If the built .exe can't discover devices** (but `npm run electron` works fine), you need to configure Windows Firewall:
-
-```powershell
-# Run this as Administrator AFTER building:
-.\setup-firewall-for-build.ps1
-```
-
-This creates firewall rules allowing the built application to:
-- Scan the network for devices
-- Connect to ZK devices on port 4370
-
-**Why is this needed?**
-- Development mode (`npm run electron`) uses Node.js which may already have firewall permissions
-- The built .exe is a different executable and needs its own firewall rules
-- Windows blocks network scanning by default for new executables
-
-**Note:** Re-run the script after rebuilding if the .exe path changes.
-
-## ⚙️ Configuration
-
-Edit `config/deviceConfig.js`:
-
-```javascript
-const DEVICE_CONFIG = {
-  // Development mode (no physical device needed)
-  useMockDevice: false,
-  
-  // Auto-discover device on network
-  autoDiscoverDevice: true,
-  
-  // Static IP (only used when auto-discovery is disabled)
-  ip: "192.168.1.15",
-  port: 4370,
-  
-  // Connection settings
-  timeout: 10000,
-  inactivityTimeout: 4000,
-  
-  // Network scanning (for auto-discovery)
-  scanTimeout: 600,
-  scanConcurrency: 120,
-  
-  // Timezone for attendance
-  timezone: "Asia/Kolkata"
-};
-```
-
-## 🔌 API Endpoints
-
-When running (either mode), the server provides these endpoints:
-
-### Device Management
-- `GET /health` - Server health check
-- `GET /status` - Connection status
-- `GET /reconnect` - Reconnect to device
-- `GET /device/info` - Device information
-- `GET /device/scan` - Scan network for devices
-
-### Attendance
-- `GET /attendance/logs` - All attendance records
-- `GET /test/latest` - Latest attendance record
-
-### Polling Control
-- `POST /polling/start` - Start polling
-- `POST /polling/stop` - Stop polling
-
-### User Management
-- `GET /users` - List all users
-- `POST /users/add` - Add new user
-- `DELETE /users/:userId` - Delete user
-
-## 📡 Device Discovery
-
-The application can automatically find ZK fingerprint devices on your network:
-
-### Automatic (on startup)
-Set `autoDiscoverDevice: true` in config and the app will scan your network on startup.
-
-### Manual (via API)
-```bash
-curl http://localhost:5001/device/scan
-```
-
-### Manual (via Desktop UI)
-Click "Scan Network" button in the device panel.
-
-See [DEVICE_DISCOVERY.md](DEVICE_DISCOVERY.md) for detailed documentation.
-
-## 🎨 Desktop App Interface
-
-### Main Features
-- **Header** - Connection status and app info
-- **Device Panel** - Connection info, scan, and reconnect
-- **Live Events** - Real-time attendance stream
-- **Statistics** - Event counters
-- **Configuration** - Current settings display
-
-### System Tray
-The app minimizes to system tray instead of closing completely. Right-click the tray icon to fully quit.
-
-## 🔥 Firebase Integration
-
-The application supports auto-enrollment from Firebase Realtime Database:
-
-1. Set up Firebase Admin SDK credentials
-2. Configure in `services/memberEnrollmentService.js`
-3. Users added to Firebase are automatically enrolled to the device
-
-## 🧪 Development Mode
-
-Test without a physical device:
-
-```javascript
-// config/deviceConfig.js
-const DEVICE_CONFIG = {
-  useMockDevice: true,  // Enable mock mode
-  // ... other settings
-};
-```
-
-Mock mode generates:
-- Simulated attendance events every 3 seconds
-- Random user IDs
-- Realistic timestamps
-
-## 📁 Project Structure
-
-```
-Middleware/
-├── config/              # Configuration files
-│   └── deviceConfig.js
-├── electron/            # Desktop app files
-│   ├── main.js         # Electron main process
-│   ├── preload.js      # IPC bridge
-│   ├── index.html      # UI structure
-│   ├── styles.css      # Styling
-│   └── renderer.js     # UI logic
-├── routes/              # API routes
-│   ├── api.js
-│   └── userManagement.js
-├── services/            # Business logic
-│   ├── deviceService.js
-│   ├── mockDeviceService.js
-│   ├── socketService.js
-│   └── memberEnrollmentService.js
-├── utils/               # Utilities
-│   ├── logger.js
-│   ├── dateUtils.js
-│   └── networkScanner.js
-└── middleware.js        # CLI entry point
-```
-
-## 🐛 Troubleshooting
-
-### Device Not Found
-
-1. Ensure device is powered on
-2. Check device is on same network
-3. Verify no firewall blocking port 4370
-4. Disable AP/client isolation on router
-5. Try manual scan: `GET /device/scan`
-
-### Desktop App Won't Start
-
-```bash
-# Reinstall dependencies
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Connection Failed
-
-1. Check `config/deviceConfig.js` settings
-2. Verify device IP is correct
-3. Try disabling auto-discovery and use static IP
-4. Check device is not in use by another application
-
-## 📚 Documentation
-
-- [ELECTRON_APP.md](ELECTRON_APP.md) - Complete desktop app guide
-- [DEVICE_DISCOVERY.md](DEVICE_DISCOVERY.md) - Network scanning documentation
-
-## 🔐 Security
-
-Desktop app security features:
-- Context isolation enabled
-- Node integration disabled in renderer
-- Secure IPC communication via preload script
-- Content Security Policy headers
-
-## 🛠️ Technology Stack
-
-- **Electron** - Desktop application framework
-- **Express.js** - REST API server
-- **Socket.IO** - Real-time communication
-- **zkteco-js** - ZK device SDK
-- **Firebase Admin** - Database integration
-- **Node.js** - Runtime environment
-
-## 📄 License
-
-ISC
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues and pull requests.
-
-## 💡 Tips
-
-### Desktop App
-- Use `Ctrl/Cmd + R` to reload the window
-- Press `F12` to open developer tools
-- App runs in system tray - right-click to quit
-
-### CLI Mode
-- Server runs on port 5001 by default
-- Use `PORT` environment variable to change
-- Press `Ctrl+C` for graceful shutdown
-
-### Network Performance
-- Scan takes ~2-5 seconds for /24 subnet
-- Adjust `scanConcurrency` in config for faster scans
-- Lower `scanTimeout` for quicker (but less reliable) scans
-
-## 🎉 Credits
-
-Built with love for ZK Teco K30 Pro and compatible devices.
-#   e s s l - n o d e - m i d d l e w a r e - g y m - m g m 
- 
- 
+[ISC](LICENSE)

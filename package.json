@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "ZK Teco Attendance Desktop App with real-time events and Firestore integration.",
   "main": "electron/main.js",
+  "bin": "middleware.js",
   "scripts": {
     "start": "node middleware.js",
     "electron": "electron .",
@@ -14,7 +15,23 @@
     "build:win:clean": "rimraf dist && electron-builder --win",
     "build:linux": "electron-builder --linux",
     "dist": "electron-builder --mac --win --linux",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build-backend": "pkg . --targets node18-win-x64 --output backend-win-x64.exe"
+  },
+  "pkg": {
+    "scripts": [
+      "services/**/*.js",
+      "routes/**/*.js",
+      "utils/**/*.js",
+      "config/**/*.js"
+    ],
+    "assets": [
+      "config/**/*.json",
+      "node_modules/zkteco-js/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
   },
   "keywords": [
     "zklib",
@@ -30,15 +47,21 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@tauri-apps/api": "^1.6.0",
+    "better-sqlite3": "^12.5.0",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
     "firebase-admin": "^13.5.0",
+    "fs-extra": "^11.3.2",
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.8.1",
     "zkteco-js": "^1.7.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.6.3",
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "pkg": "^5.8.1"
   },
   "build": {
     "appId": "com.zkattendance.desktop",

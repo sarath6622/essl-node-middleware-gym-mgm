@@ -38,3 +38,7 @@ logs/
 *.pid
 *.seed
 *.pid.lock
+
+# --- Tauri ---
+src-tauri/target/
+

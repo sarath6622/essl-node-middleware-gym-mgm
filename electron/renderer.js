@@ -65,8 +65,27 @@ async function init() {
       });
     }
 
-    // Load configuration
-    const config = await window.electronAPI.getConfig();
+    // Load configuration with retry
+    let config = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 30;
+
+    while (!config && retryCount < MAX_RETRIES) {
+      try {
+        config = await window.electronAPI.getConfig();
+      } catch (e) {
+        retryCount++;
+        console.log(`Backend not ready, retrying (${retryCount}/${MAX_RETRIES})...`);
+        updateStatus(`Initializing system... (${retryCount})`, 'scanning');
+        footerStatus.textContent = `Waiting for backend service... (${retryCount})`;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (!config) {
+      throw new Error('Failed to connect to backend service after 30 seconds. Please restart.');
+    }
+
     displayConfig(config);
 
     // Setup Socket.IO connection
@@ -208,6 +227,12 @@ function setupSocketIO() {
       // Show success notification
       showCacheRefreshNotification(data);
     });
+
+    // Receive logs via socket (Sidecar mode)
+    socket.on('log-message', (logData) => {
+        addLogMessage(logData);
+    });
+
   } catch (error) {
     footerStatus.textContent = 'Socket.IO setup failed: ' + error.message;
   }
