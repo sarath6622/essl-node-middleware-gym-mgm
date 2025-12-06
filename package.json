@@ -8,6 +8,8 @@
     "start": "node middleware.js",
     "electron": "electron .",
     "electron:dev": "NODE_ENV=development electron .",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
     "postinstall": "electron-builder install-app-deps",
     "build": "electron-builder",
     "build:mac": "npm run postinstall && electron-builder --mac",

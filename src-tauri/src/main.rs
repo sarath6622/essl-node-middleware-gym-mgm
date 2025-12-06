@@ -3,13 +3,13 @@
   windows_subsystem = "windows"
 )]
 
-use std::process::Command;
-use tauri::api::process::Command as TauriCommand;
+// use std::process::Command;
+// use tauri::api::process::Command as TauriCommand;
 
 fn main() {
   tauri::Builder::default()
     .setup(|_app| {
-        tauri::async_runtime::spawn(async move {
+            /*
             #[cfg(debug_assertions)]
             {
                 // In Development: Run directly with Node.js using std::process::Command
@@ -50,9 +50,12 @@ fn main() {
                     .spawn()
                     .expect("Failed to spawn sidecar");
             }
-        });
+            */
+            println!("ℹ️ Backend management disabled in main.rs (Agent Override)");
+            // tauri::async_runtime::spawn(async move { ... });
         Ok(())
     })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+    println!("❌ App loop exited unexpectedly!");
 }

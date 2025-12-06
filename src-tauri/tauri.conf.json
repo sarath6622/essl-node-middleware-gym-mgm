@@ -18,14 +18,24 @@
         "open": true,
         "sidecar": true,
         "scope": [
-            { "name": "binaries/backend", "sidecar": true, "args": true },
-            { "name": "node", "cmd": "node", "args": true }
+          {
+            "name": "binaries/backend",
+            "sidecar": true,
+            "args": true
+          },
+          {
+            "name": "node",
+            "cmd": "node",
+            "args": true
+          }
         ]
       },
       "http": {
         "all": true,
         "request": true,
-        "scope": ["http://localhost:5001/*"]
+        "scope": [
+          "http://localhost:5001/*"
+        ]
       }
     },
     "bundle": {
@@ -35,10 +45,12 @@
       "deb": {
         "depends": []
       },
-      "externalBin": [
-        "binaries/backend"
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png"
       ],
-      "icon": [],
       "identifier": "com.zkattendance.desktop",
       "longDescription": "",
       "macOS": {

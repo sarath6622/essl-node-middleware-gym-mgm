@@ -14,12 +14,14 @@ const deviceService = DEVICE_CONFIG.useMockDevice
   : require("./services/deviceService");
 
 const app = express();
+const cors = require("cors");
 const server = http.createServer(app);
 const io = initializeSocket(server);
 
 app.set("io", io);
 app.set("deviceService", deviceService);
 
+app.use(cors());
 app.use(express.json());
 app.use("/", apiRoutes);
 app.use("/users", userManagementRoutes);
@@ -144,36 +146,36 @@ server.listen(PORT, async () => {
     const connected = await deviceService.connectToDevice(io);
 
     if (connected) {
-    // Initialize Firebase Realtime Database listener for auto-enrollment
-    if (!DEVICE_CONFIG.useMockDevice) {
-      log("info", "");
-      log("info", "🎯 Initializing auto-enrollment from Firebase Realtime Database...");
-      initializeMemberEnrollmentListener(deviceService);
-    }
+      // Initialize Firebase Realtime Database listener for auto-enrollment
+      if (!DEVICE_CONFIG.useMockDevice) {
+        log("info", "");
+        log("info", "🎯 Initializing auto-enrollment from Firebase Realtime Database...");
+        initializeMemberEnrollmentListener(deviceService);
+      }
 
-    if (DEVICE_CONFIG.useMockDevice) {
-      log("info", "");
-      log("info", "🔥 Mock device is active.");
-      log("info", "Attendance events will be generated automatically every 3 seconds.");
-      log("info", "");
-      deviceService.startPolling(io);
-    } else {
-      log("info", "");
-      log("info", "✋ TESTING INSTRUCTIONS:");
-      log("info", "1. Scan your fingerprint on the K30 Pro device");
-      log("info", "2. Watch this console for real-time events");
-      log(
-        "info",
-        "3. If no events appear, polling will catch them (5 sec intervals)"
-      );
-      log("info", "4. New members will be auto-enrolled from Firebase");
-      log("info", "");
+      if (DEVICE_CONFIG.useMockDevice) {
+        log("info", "");
+        log("info", "🔥 Mock device is active.");
+        log("info", "Attendance events will be generated automatically every 3 seconds.");
+        log("info", "");
+        deviceService.startPolling(io);
+      } else {
+        log("info", "");
+        log("info", "✋ TESTING INSTRUCTIONS:");
+        log("info", "1. Scan your fingerprint on the K30 Pro device");
+        log("info", "2. Watch this console for real-time events");
+        log(
+          "info",
+          "3. If no events appear, polling will catch them (5 sec intervals)"
+        );
+        log("info", "4. New members will be auto-enrolled from Firebase");
+        log("info", "");
 
-      setTimeout(() => {
-        log("info", "Starting smart polling mechanism (activates only if real-time fails)...");
-        deviceService.startPolling(io, "smart"); // Use smart mode
-      }, 10000);
-    }
+        setTimeout(() => {
+          log("info", "Starting smart polling mechanism (activates only if real-time fails)...");
+          deviceService.startPolling(io, "smart"); // Use smart mode
+        }, 10000);
+      }
     }
   }
 });
