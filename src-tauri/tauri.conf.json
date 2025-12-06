@@ -7,8 +7,8 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "zk-attendance-desktop",
-    "version": "1.0.0"
+    "productName": "ZKAttendanceMonitor",
+    "version": "1.0.1"
   },
   "tauri": {
     "allowlist": {
@@ -45,11 +45,15 @@
       "deb": {
         "depends": []
       },
-      "externalBin": [],
+      "externalBin": [
+        "binaries/backend"
+      ],
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
-        "icons/128x128@2x.png"
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
       ],
       "identifier": "com.zkattendance.desktop",
       "longDescription": "",

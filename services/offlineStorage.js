@@ -1,95 +1,29 @@
 /**
- * Offline Storage Service (SQLite Version)
- * Manages local storage of attendance data using SQLite
+ * Offline Storage Service (JSON Version)
+ * Manages local storage of attendance data using JSON files
  */
 
-const db = require('./database');
-const log = require('../utils/logger');
 const fs = require('fs-extra');
 const path = require('path');
+const log = require('../utils/logger');
 
 class OfflineStorageService {
   constructor() {
-    // Initialize DB on first use
-    db.init();
-    this.migrateLegacyData();
+    this.storageDir = null;
+    this.attendanceFile = null;
+    this.usersFile = null;
+    this.init();
   }
 
-  /**
-   * Migrate data from old JSON files to SQLite
-   */
-  async migrateLegacyData() {
-    try {
-      // Check if migration already happened
-      const row = db.prepare("SELECT value FROM key_value_store WHERE key = 'legacy_migration_done'").get();
-      if (row && row.value === 'true') return;
+  init() {
+    const appDataPath = process.env.APPDATA ||
+      (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
+    
+    this.storageDir = path.join(appDataPath, 'ZK-Attendance', 'offline-data');
+    this.attendanceFile = path.join(this.storageDir, 'pending-attendance.json');
+    this.usersFile = path.join(this.storageDir, 'users-cache.json');
 
-      log('info', '🔄 Checking for legacy JSON data to migrate...');
-
-      const appDataPath = process.env.APPDATA ||
-        (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
-      const oldStorageDir = path.join(appDataPath, 'ZK-Attendance', 'offline-data');
-      const attendanceFile = path.join(oldStorageDir, 'pending-attendance.json');
-      const cacheFile = path.join(oldStorageDir, 'users-cache.json');
-
-      // Migrate Pending Attendance
-      if (await fs.pathExists(attendanceFile)) {
-        const data = await fs.readFile(attendanceFile, 'utf-8');
-        try {
-          const records = JSON.parse(data);
-          if (!Array.isArray(records)) {
-            log('warning', '⚠️ Legacy attendance file is not an array, skipping migration');
-            return;
-          }
-
-          const insertStmt = db.prepare(`
-            INSERT INTO attendance_logs (user_id, timestamp, device_ip, sync_status, created_at, metadata)
-            VALUES (@userId, @timestamp, @deviceIp, 'pending', @created_at, @metadata)
-          `);
-
-          const transaction = db.transaction((records) => {
-            for (const record of records) {
-              if (!record) continue;
-              if (record.syncStatus === 'pending') {
-                insertStmt.run({
-                  userId: record.userId || record.userSn || 'unknown',
-                  timestamp: record.timestamp || new Date().toISOString(),
-                  deviceIp: record.ip || 'unknown',
-                  created_at: record.offlineTimestamp || new Date().toISOString(),
-                  metadata: JSON.stringify(record)
-                });
-                count++;
-              }
-            }
-          });
-
-          transaction(records);
-          log('success', `✅ Migrated ${count} pending records from JSON to SQLite`);
-        } catch (e) {
-          log('error', `Failed to migrate attendance JSON: ${e.message}`);
-        }
-      }
-
-      // Migrate User Cache
-      if (await fs.pathExists(cacheFile)) {
-        const data = await fs.readFile(cacheFile, 'utf-8');
-        try {
-          const cache = JSON.parse(data);
-          if (cache.users && Array.isArray(cache.users)) {
-            await this.cacheUsers(cache.users);
-            log('success', `✅ Migrated ${cache.users.length} users from JSON to SQLite`);
-          }
-        } catch (e) {
-          log('error', `Failed to migrate user cache JSON: ${e.message}`);
-        }
-      }
-
-      // Mark migration as done
-      db.prepare("INSERT OR REPLACE INTO key_value_store (key, value) VALUES ('legacy_migration_done', 'true')").run();
-
-    } catch (error) {
-      log('error', `Migration error: ${error.message}`);
-    }
+    fs.ensureDirSync(this.storageDir);
   }
 
   /**
@@ -97,19 +31,28 @@ class OfflineStorageService {
    */
   async saveOfflineAttendance(attendanceData) {
     try {
-      const stmt = db.prepare(`
-        INSERT INTO attendance_logs (user_id, timestamp, device_ip, sync_status, metadata)
-        VALUES (@userId, @timestamp, @deviceIp, 'pending', @metadata)
-      `);
+      let currentData = [];
+      if (await fs.pathExists(this.attendanceFile)) {
+        const fileContent = await fs.readFile(this.attendanceFile, 'utf-8');
+        try {
+          currentData = JSON.parse(fileContent);
+          if (!Array.isArray(currentData)) currentData = [];
+        } catch (e) {
+          currentData = [];
+        }
+      }
 
-      stmt.run({
-        userId: attendanceData.userId || attendanceData.userSn || 'unknown',
-        timestamp: attendanceData.timestamp || new Date().toISOString(),
-        deviceIp: attendanceData.ip || 'unknown',
-        metadata: JSON.stringify(attendanceData)
-      });
+      const newRecord = {
+        ...attendanceData,
+        recordId: Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9), // Unique ID for sync tracking
+        offlineTimestamp: new Date().toISOString(),
+        syncStatus: 'pending'
+      };
 
-      log('info', `💾 Saved attendance offline (SQLite): ${attendanceData.userId}`);
+      currentData.push(newRecord);
+      
+      await fs.writeJson(this.attendanceFile, currentData, { spaces: 2 });
+      log('info', `💾 Saved attendance offline (JSON): ${attendanceData.userId || attendanceData.userSn}`);
       return true;
     } catch (error) {
       log('error', `Failed to save offline attendance: ${error.message}`);
@@ -122,19 +65,16 @@ class OfflineStorageService {
    */
   async getPendingAttendance() {
     try {
-      const rows = db.prepare("SELECT * FROM attendance_logs WHERE sync_status = 'pending'").all();
+      if (!await fs.pathExists(this.attendanceFile)) {
+        return [];
+      }
+
+      const fileContent = await fs.readFile(this.attendanceFile, 'utf-8');
+      const data = JSON.parse(fileContent);
       
-      // Map back to format expected by sync service
-      return rows.map(row => {
-        let metadata = {};
-        try { metadata = JSON.parse(row.metadata); } catch(e){}
-        
-        return {
-          ...metadata, // original data
-          dbId: row.id, // internal DB ID
-          offlineTimestamp: row.created_at // match old field name for compatibility
-        };
-      });
+      if (!Array.isArray(data)) return [];
+
+      return data.filter(record => record.syncStatus === 'pending');
     } catch (error) {
       log('error', `Failed to get pending: ${error.message}`);
       return [];
@@ -144,49 +84,54 @@ class OfflineStorageService {
   /**
    * Mark attendance records as synced
    */
-  async markAsSynced(syncedIds) {
+  async markAsSynced(syncedIdsOrRecords) {
     try {
-      // syncedIds used to be timestamps strings, now let's handle if they are passed as DB IDs
-      // Update: syncService will be updated to pass DB IDs, but for backward compat/transition let's handle carefully.
-      
-      // We will update syncService to return the 'dbId' we sent it.
-      
-      const updateStmt = db.prepare(`
-        UPDATE attendance_logs 
-        SET sync_status = 'synced', synced_at = CURRENT_TIMESTAMP 
-        WHERE id = ?
-      `);
+      if (!await fs.pathExists(this.attendanceFile)) {
+        return;
+      }
 
-      const transaction = db.transaction((ids) => {
-        for (const id of ids) {
-          updateStmt.run(id);
-        }
-      });
+      let currentData = await fs.readJson(this.attendanceFile);
+      if (!Array.isArray(currentData)) return;
 
-      transaction(syncedIds);
-      log('success', `✅ Marked ${syncedIds.length} records as synced`);
+      // Extract IDs to match. syncedIdsOrRecords could be IDs or objects depending on caller 
+      // (Compatibility with old logic: usually it passed timestamps or objects)
+      // We will try to match loosely for robustness during migration
+      
+      const idsToSync = new Set(syncedIdsOrRecords.map(item => {
+        if (typeof item === 'string') return item;
+        if (item.recordId) return item.recordId; 
+        if (item.dbId) return item.dbId; // From previous step if we passed dbId
+        return null; 
+      }).filter(Boolean));
+
+      // Filter out synced items (remove them from pending file entirely or mark as synced? 
+      // Let's remove them to keep file size small, or move to 'synced-history.json' if needed. 
+      // For now, removing is safer for performance)
+      
+      const initialCount = currentData.length;
+      
+      // If we want to keep history, we could mark them. But let's just remove them to emulate "Synced and Cleaned" 
+      // OR we mark them as synced and have a cleanup job.
+      // Let's keep it simple: Remove them.
+      
+      const remainingData = currentData.filter(record => !idsToSync.has(record.recordId) && !idsToSync.has(record.dbId));
+      
+      if (remainingData.length < initialCount) {
+        await fs.writeJson(this.attendanceFile, remainingData, { spaces: 2 });
+        log('success', `✅ Marked ${initialCount - remainingData.length} records as synced (removed from pending)`);
+      }
+      
     } catch (error) {
       log('error', `Failed to mark records as synced: ${error.message}`);
     }
   }
 
   /**
-   * Clear old synced records (older than 30 days - increased from 7 since we have DB now)
+   * Clean up old synced records (Not needed if we delete them on sync, but kept for interface compatibility)
    */
   async cleanupSyncedRecords() {
-    try {
-      const result = db.prepare(`
-        DELETE FROM attendance_logs 
-        WHERE sync_status = 'synced' 
-        AND synced_at < datetime('now', '-30 days')
-      `).run();
-
-      if (result.changes > 0) {
-        log('info', `🧹 Cleaned up ${result.changes} old synced records`);
-      }
-    } catch (error) {
-      log('error', `Cleanup failed: ${error.message}`);
-    }
+    // No-op since we delete on sync now
+    return;
   }
 
   /**
@@ -194,25 +139,15 @@ class OfflineStorageService {
    */
   async cacheUsers(users) {
     try {
-      const insertStmt = db.prepare(`
-        INSERT OR REPLACE INTO users (id, name, biometric_device_id, card_number, privilege)
-        VALUES (@userId, @name, @biometricDeviceId, @cardNumber, @privilege)
-      `);
+      if (!users || !Array.isArray(users)) return;
 
-      const transaction = db.transaction((userList) => {
-        for (const user of userList) {
-          insertStmt.run({
-            userId: user.userId || user.sn || user.id, // Handle variations
-            name: user.name,
-            biometricDeviceId: user.biometricDeviceId, // New field
-            cardNumber: user.cardNumber || user.cardno,
-            privilege: user.privilege || 0
-          });
-        }
-      });
+      const cacheData = {
+        updatedAt: new Date().toISOString(),
+        users: users
+      };
 
-      transaction(users);
-      log('info', `💾 Cached ${users.length} users in SQLite`);
+      await fs.writeJson(this.usersFile, cacheData, { spaces: 2 });
+      log('info', `💾 Cached ${users.length} users in JSON`);
     } catch (error) {
       log('error', `Failed to cache users: ${error.message}`);
     }
@@ -223,24 +158,18 @@ class OfflineStorageService {
    */
   async getCachedUsers(silent = false) {
     try {
-      const users = db.prepare("SELECT * FROM users").all();
-      
-      // Map helper to restore camelCase properties
-      const mappedUsers = users.map(u => ({
-        id: u.id,
-        name: u.name,
-        biometricDeviceId: u.biometric_device_id, // Map back
-        cardNumber: u.card_number,
-        privilege: u.privilege,
-        updatedAt: u.updated_at
-      }));
-
-      if (!silent) {
-        log('debug', `📦 Retrieved ${mappedUsers.length} users from SQLite cache`);
+      if (!await fs.pathExists(this.usersFile)) {
+        return [];
       }
-      return mappedUsers;
+
+      const data = await fs.readJson(this.usersFile);
+      if (data && Array.isArray(data.users)) {
+        if (!silent) log('debug', `📦 Retrieved ${data.users.length} users from JSON cache`);
+        return data.users;
+      }
+      return [];
     } catch (error) {
-      console.error(error);
+      if (!silent) console.error(error);
       return [];
     }
   }
@@ -250,15 +179,24 @@ class OfflineStorageService {
    */
   async getStats() {
     try {
-      const pendingCount = db.prepare("SELECT COUNT(*) as count FROM attendance_logs WHERE sync_status = 'pending'").get().count;
-      const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-      const totalLogs = db.prepare("SELECT COUNT(*) as count FROM attendance_logs").get().count;
+      let pendingCount = 0;
+      let userCount = 0;
+
+      if (await fs.pathExists(this.attendanceFile)) {
+        const data = await fs.readJson(this.attendanceFile);
+        if (Array.isArray(data)) pendingCount = data.length;
+      }
+
+      if (await fs.pathExists(this.usersFile)) {
+        const data = await fs.readJson(this.usersFile);
+        if (data && Array.isArray(data.users)) userCount = data.users.length;
+      }
 
       return {
         pendingSync: pendingCount,
         cachedUsers: userCount,
-        totalLogs: totalLogs,
-        storageType: 'SQLite'
+        totalLogs: pendingCount, // Rough approx since we delete synced
+        storageType: 'JSON'
       };
     } catch (error) {
       return { pendingSync: 0, cachedUsers: 0 };
@@ -268,3 +206,4 @@ class OfflineStorageService {
 
 const offlineStorage = new OfflineStorageService();
 module.exports = offlineStorage;
+

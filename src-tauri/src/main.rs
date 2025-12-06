@@ -3,6 +3,7 @@
   windows_subsystem = "windows"
 )]
 
+#[cfg(debug_assertions)]
 use std::process::Command;
 use tauri::api::process::Command as TauriCommand;
 

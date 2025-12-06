@@ -1,12 +1,12 @@
 # ZK Attendance Desktop App (Tauri Edition)
 
-A strictly offline, local-first desktop application for managing ZKTeco biometric attendance devices. Built with **Tauri**, **Node.js**, **Express**, and **SQLite**.
+A strictly offline, local-first desktop application for managing ZKTeco biometric attendance devices. Built with **Tauri**, **Node.js**, and **Express**.
 
 ## Features
 
 -   **Real-time Attendance Monitoring**: View check-ins as they happen via Socket.IO.
 -   **Hardware Integration**: Direct communication with ZKTeco devices (e.g., eSSL K30 Pro) over UDP/TCP.
--   **Offline First**: All data stored locally in SQLite (`better-sqlite3`).
+-   **Offline First**: All data stored locally in JSON files.
 -   **Firebase Sync**: Background synchronization with Firestore for cloud backups (optional).
 -   **User Management**: Text-to-Speech welcome messages and membership expiry alerts.
 

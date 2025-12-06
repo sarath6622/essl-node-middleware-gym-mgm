@@ -39,18 +39,18 @@ async function prepareSidecar() {
   console.log(`🚚 Moving binary to ${targetBin}...`);
   await fs.move(sourceBin, targetBin, { overwrite: true });
 
-  // 3. Copy native modules
-  console.log('🔗 Copying native modules...');
-  const betterSqliteSource = path.join(rootDir, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
-  const betterSqliteTarget = path.join(tauriBinDir, 'better_sqlite3.node');
+  // 3. Copy native modules - SKIPPED (SQLite removed)
+  // console.log('🔗 Copying native modules...');
+  // const betterSqliteSource = path.join(rootDir, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+  // const betterSqliteTarget = path.join(tauriBinDir, 'better_sqlite3.node');
 
-  if (await fs.pathExists(betterSqliteSource)) {
-    await fs.copy(betterSqliteSource, betterSqliteTarget, { overwrite: true });
-    console.log('✅ Native module copied.');
-  } else {
-    console.error('❌ Could not find better_sqlite3.node. Did you run npm install?');
-    process.exit(1);
-  }
+  // if (await fs.pathExists(betterSqliteSource)) {
+  //   await fs.copy(betterSqliteSource, betterSqliteTarget, { overwrite: true });
+  //   console.log('✅ Native module copied.');
+  // } else {
+  //   console.error('❌ Could not find better_sqlite3.node. Did you run npm install?');
+  //   process.exit(1);
+  // }
 
   console.log('✨ Sidecar prepared successfully!');
 }
