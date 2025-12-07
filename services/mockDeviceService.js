@@ -7,15 +7,24 @@ let isConnected = false;
 let mockPollingInterval = null;
 
 // A small pool of mock users. In a real scenario, these would be in your DB.
-const MOCK_USERS = {
-  "MOCK-1": { name: "Alice Johnson", profileImageUrl: "https://i.pravatar.cc/150?u=alice", membershipPlanId: "premium_monthly", membershipStatus: "active" },
-  "MOCK-2": { name: "Bob Williams", profileImageUrl: "https://i.pravatar.cc/150?u=bob", membershipPlanId: "basic_yearly", membershipStatus: "active" },
-  "MOCK-3": { name: "Charlie Brown", profileImageUrl: "https://i.pravatar.cc/150?u=charlie", membershipPlanId: "premium_monthly", membershipStatus: "expired" },
-  "MOCK-4": { name: "Charlie Brown", profileImageUrl: "https://i.pravatar.cc/150?u=charlie", membershipPlanId: "premium_monthly", membershipStatus: "expired" },
-  "MOCK-5": { name: "Charlie Brown", profileImageUrl: "https://i.pravatar.cc/150?u=charlie", membershipPlanId: "premium_monthly", membershipStatus: "expired" },
-  "MOCK-6": { name: "Charlie Brown", profileImageUrl: "https://i.pravatar.cc/150?u=charlie", membershipPlanId: "premium_monthly", membershipStatus: "expired" },
-  "MOCK-7": { name: "Charlie Brown", profileImageUrl: "https://i.pravatar.cc/150?u=charlie", membershipPlanId: "premium_monthly", membershipStatus: "expired" },
-};
+// Generate 50 distinct mock users
+const MOCK_USERS = {};
+const FIRST_NAMES = ["James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda", "William", "Elizabeth", "David", "Barbara", "Richard", "Susan", "Joseph", "Jessica", "Thomas", "Sarah", "Charles", "Karen", "Christopher", "Nancy", "Daniel", "Lisa", "Matthew", "Betty", "Anthony", "Margaret", "Mark", "Sandra", "Donald", "Ashley", "Steven", "Kimberly", "Paul", "Emily", "Andrew", "Donna", "Joshua", "Michelle", "Kenneth", "Dorothy", "Kevin", "Carol", "Brian", "Amanda", "George", "Melissa", "Edward", "Deborah"];
+const LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores", "Green", "Adams", "Nelson", "Baker", "Hall", "Rivera", "Campbell", "Mitchell", "Carter", "Roberts"];
+
+for (let i = 1; i <= 50; i++) {
+  const firstName = FIRST_NAMES[(i - 1) % FIRST_NAMES.length];
+  const lastName = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]; // Random last name
+  const fullName = `${firstName} ${lastName}`;
+  const userId = `MOCK-${i.toString().padStart(3, '0')}`;
+  
+  MOCK_USERS[userId] = {
+    name: fullName,
+    profileImageUrl: `https://i.pravatar.cc/150?u=${userId}`, // Unique avatar per user
+    membershipPlanId: i % 3 === 0 ? "platinum_yearly" : (i % 2 === 0 ? "premium_monthly" : "basic_yearly"),
+    membershipStatus: i % 10 === 0 ? "expired" : (i % 15 === 0 ? "pending" : "active") // Mostly active
+  };
+}
 
 async function connectToDevice(io) {
   log("info", "[MOCK] Connecting to mock device...");
