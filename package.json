@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "description": "ZK Teco Attendance Desktop App with real-time events and Firestore integration.",
   "main": "electron/main.js",
-  "bin": "middleware.js",
+  "bin": "services/backend-server.js",
   "scripts": {
     "start": "node middleware.js",
     "electron": "electron .",

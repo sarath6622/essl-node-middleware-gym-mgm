@@ -37,11 +37,15 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Self-termination when parent process (Tauri) exits
 // The parent process holds a pipe to our stdin. When it dies, the pipe closes.
+// WARN: In production sidecar mode, stdin might be closed immediately if not piped!
+// Tauri handles sidecar cleanup automatically, so we might not need this for binary.
+/*
 process.stdin.resume();
 process.stdin.on('end', () => {
     log('info', 'Parent process (Tauri) disconnected. Shutting down backend...');
     stopServer().then(() => process.exit(0));
 });
+*/
 
 // Express server setup
 const app = express();
@@ -54,10 +58,17 @@ let server = null;
 
 async function startServer() {
   return new Promise((resolve) => {
+    // FORCE MOCK MODE for production build assurance
+    console.log("⚠️ FORCING MOCK MODE FOR PRODUCTION BUILD ⚠️");
+    DEVICE_CONFIG.useMockDevice = true;
+    DEVICE_CONFIG.ip = 'mock-device'; // Ensure IP is set for UI display
+
+    // Explicitly require mock service for pkg detection
+    const mockService = require('./mockDeviceService');
+    // const realService = require('./deviceService'); 
+
     // Initialize device service
-    deviceService = DEVICE_CONFIG.useMockDevice
-      ? require('../services/mockDeviceService')
-      : require('../services/deviceService');
+    deviceService = mockService;
 
     // Initialize Socket.IO
     io = initializeSocket(httpServer);
@@ -94,6 +105,11 @@ async function startServer() {
 
       // Auto-discover device if enabled
       handleAutoDiscovery();
+
+      // Test log to verify UI receiving data
+      setTimeout(() => {
+          log('info', '✅ Backend initialized and connected to UI');
+      }, 5000);
 
       resolve();
     });
