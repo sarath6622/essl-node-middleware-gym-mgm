@@ -70,17 +70,44 @@ async function init() {
     let retryCount = 0;
     const MAX_RETRIES = 30;
 
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    // Wait for Backend Server to be ready (HTTP check)
+    let backendReady = false;
+    let retries = 0;
+    while (!backendReady && retries < 30) {
+      try {
+        const response = await fetch('http://localhost:5001/');
+        if (response.ok || response.status === 404) { // 404 is fine, means server is up
+           backendReady = true;
+           updateStatus('Backend connected', 'connected');
+        }
+      } catch (e) {
+        retries++;
+        console.log(`Waiting for backend server... (${retries}/30)`);
+        updateStatus(`Starting backend service... (${retries})`, 'scanning');
+        if (loadingOverlay) loadingOverlay.querySelector('div').textContent = `Starting Backend Service... (${retries})`;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!backendReady) {
+       if (loadingOverlay) loadingOverlay.innerHTML = '<div style="color:red; text-align:center;">Failed to connect to backend service.<br>Please restart the application.</div>';
+       throw new Error('Backend service failed to start.');
+    }
+
+    // Now get config via IPC
     while (!config && retryCount < MAX_RETRIES) {
       try {
-        config = await window.electronAPI.getConfig();
+        config = await window.electronAPI.getConfig(); 
       } catch (e) {
         retryCount++;
-        console.log(`Backend not ready, retrying (${retryCount}/${MAX_RETRIES})...`);
-        updateStatus(`Initializing system... (${retryCount})`, 'scanning');
-        footerStatus.textContent = `Waiting for backend service... (${retryCount})`;
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
+
+    // Hide overlay
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
 
     if (!config) {
       throw new Error('Failed to connect to backend service after 30 seconds. Please restart.');

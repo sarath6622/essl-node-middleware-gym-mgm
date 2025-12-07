@@ -84,8 +84,25 @@ async function getUserByBiometricId(biometricDeviceId, skipCache = false) {
 
     if (now < cached.expiresAt) {
       cacheHits++;
+      
+      // OPTIMIZATION: Load photo from disk on demand if needed
+      const cachedUser = { ...cached.data }; // Shallow copy to avoid mutating cache
+      
+      // Check if we have an externalized photo and no loaded image yet
+      if (cachedUser.photoLocalPath && !cachedUser.profileImageUrl) {
+        try {
+           // Load photo into the returned object, but NOT the cache
+           const photo = await offlineStorage.getUserPhoto(cachedUser.photoLocalPath);
+           if (photo) {
+             cachedUser.profileImageUrl = photo;
+           }
+        } catch (e) {
+          log("error", `Failed to load photo for ${cachedUser.id}: ${e.message}`);
+        }
+      }
+
       log("debug", `Cache hit for biometricDeviceId: ${biometricDeviceId}`);
-      return cached.data;
+      return cachedUser;
     } else {
       // Expired entry
       userCache.delete(cacheKey);
@@ -120,15 +137,38 @@ async function getUserByBiometricId(biometricDeviceId, skipCache = false) {
         id: userDoc.id,
         ...docData,
       };
+
+      // OPTIMIZATION: If fetched fresh from DB, also save photo to disk and strip from cache
+      // Only offload if it's a Base64 string (Data URI)
+      if (userData.profileImageUrl && userData.profileImageUrl.startsWith('data:')) {
+         try {
+           const photoPath = await offlineStorage.saveUserPhoto(userData.id, userData.profileImageUrl);
+           if (photoPath) {
+             userData.photoLocalPath = photoPath;
+             // Keep profileImageUrl in the returned object for this request
+           }
+         } catch (e) {
+            log("warning", `Failed to offload photo for ${userData.id}: ${e.message}`);
+         }
+      }
     }
 
-    // Cache the result (even if null, to avoid repeated queries for non-existent users)
-    evictOldestIfNeeded();
-    userCache.set(cacheKey, {
-      data: userData,
-      cachedAt: now,
-      expiresAt: now + CACHE_TTL,
-    });
+    // Cache the result
+    if (userData) {
+      evictOldestIfNeeded();
+      
+      // Store lightweight version in cache (NO heavy profileImageUrl)
+      const cacheVersion = { ...userData };
+      if (cacheVersion.photoLocalPath) {
+        delete cacheVersion.profileImageUrl; 
+      }
+
+      userCache.set(cacheKey, {
+        data: cacheVersion,
+        cachedAt: now,
+        expiresAt: now + CACHE_TTL,
+      });
+    }
 
     return userData;
   } catch (error) {
@@ -140,9 +180,17 @@ async function getUserByBiometricId(biometricDeviceId, skipCache = false) {
     log("warning", `📦 Trying offline cache for biometricDeviceId: ${biometricDeviceId}`);
     try {
       const cachedUsers = await offlineStorage.getCachedUsers();
-      const user = cachedUsers.find(u => String(u.biometricDeviceId) === cacheKey);
+      let user = cachedUsers.find(u => String(u.biometricDeviceId) === cacheKey);
 
       if (user) {
+        // Load photo for offline fallback too
+        if (user.photoLocalPath && !user.profileImageUrl) {
+           const photo = await offlineStorage.getUserPhoto(user.photoLocalPath);
+           if (photo) {
+             user = { ...user, profileImageUrl: photo };
+           }
+        }
+
         log("success", `✅ Found user in offline cache: ${user.name}`);
         return user;
       } else {
@@ -170,6 +218,7 @@ function invalidateUserCache(biometricDeviceId) {
 /**
  * Pre-warm cache by loading all users on startup
  * This dramatically improves first-scan performance
+ * MEMORY OPTIMIZED: Saves photos to disk instead of RAM
  */
 async function prewarmCache() {
   if (!db) {
@@ -188,13 +237,30 @@ async function prewarmCache() {
 
     const now = Date.now();
     let cachedCount = 0;
+    let photoOffloadedCount = 0;
     const allUsers = [];
 
-    snapshot.forEach((doc) => {
+    // Parallel processing for photo saving might be too heavy, doing sequential for safety
+    for (const doc of snapshot.docs) {
       const userData = {
         id: doc.id,
         ...doc.data(),
       };
+
+      // MEMORY OPTIMIZATION: Offload photo to disk
+      // Only process if it looks like a base64 image (starts with data:)
+      if (userData.profileImageUrl && userData.profileImageUrl.startsWith('data:')) {
+        try {
+          const photoPath = await offlineStorage.saveUserPhoto(userData.id, userData.profileImageUrl);
+          if (photoPath) {
+            userData.photoLocalPath = photoPath;
+            delete userData.profileImageUrl; // Remove heavy data from RAM object
+            photoOffloadedCount++;
+          }
+        } catch (e) {
+          log('warning', `Failed to save photo for ${userData.id}: ${e.message}`);
+        }
+      }
 
       const cacheKey = String(userData.biometricDeviceId);
       userCache.set(cacheKey, {
@@ -204,13 +270,13 @@ async function prewarmCache() {
       });
       allUsers.push(userData);
       cachedCount++;
-    });
+    }
 
-    // Also save to offline storage for offline access
+    // Also save to offline storage for offline access (now lightweight)
     await offlineStorage.cacheUsers(allUsers);
 
     const duration = Date.now() - startTime;
-    log("success", `✅ Cache pre-warmed with ${cachedCount} users in ${duration}ms`);
+    log("success", `✅ Cache pre-warmed with ${cachedCount} users (${photoOffloadedCount} photos externalized) in ${duration}ms`);
   } catch (error) {
     log("error", `Failed to prewarm cache: ${error.message}`);
   }

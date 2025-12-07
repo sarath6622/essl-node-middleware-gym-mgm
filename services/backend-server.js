@@ -35,6 +35,14 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// Self-termination when parent process (Tauri) exits
+// The parent process holds a pipe to our stdin. When it dies, the pipe closes.
+process.stdin.resume();
+process.stdin.on('end', () => {
+    log('info', 'Parent process (Tauri) disconnected. Shutting down backend...');
+    stopServer().then(() => process.exit(0));
+});
+
 // Express server setup
 const app = express();
 const httpServer = http.createServer(app);
@@ -96,7 +104,10 @@ async function handleAutoDiscovery() {
     let deviceIP = null;
     let shouldConnect = true;
 
-    if (!DEVICE_CONFIG.useMockDevice && DEVICE_CONFIG.autoDiscoverDevice) {
+    if (DEVICE_CONFIG.useMockDevice) {
+        deviceIP = "mock-device";
+        shouldConnect = true;
+    } else if (!DEVICE_CONFIG.useMockDevice && DEVICE_CONFIG.autoDiscoverDevice) {
         log('info', '🔍 Auto-discovery enabled. Scanning network for fingerprint device...');
         
         // Note: We can uses socket to emit scan-started if needed, but the UI might not be connected yet.

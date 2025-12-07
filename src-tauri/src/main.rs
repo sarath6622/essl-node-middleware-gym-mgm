@@ -5,11 +5,17 @@
 
 #[cfg(debug_assertions)]
 use std::process::Command;
+#[cfg(not(debug_assertions))]
 use tauri::api::process::Command as TauriCommand;
+use tauri::Manager;
+use std::sync::Mutex;
+
+#[cfg(debug_assertions)]
+struct BackendProcess(Mutex<Option<std::process::Child>>);
 
 fn main() {
   tauri::Builder::default()
-    .setup(|_app| {
+    .setup(|app| {
             #[cfg(debug_assertions)]
             {
                 // In Development: Run directly with Node.js using std::process::Command
@@ -34,10 +40,14 @@ fn main() {
                     .arg(script_path)
                     .stdout(std::process::Stdio::inherit())
                     .stderr(std::process::Stdio::inherit())
+                    .stdin(std::process::Stdio::piped())
                     .spawn();
 
                 match child {
-                    Ok(_) => println!("✅ Backend node process spawned successfully"),
+                    Ok(c) => {
+                        println!("✅ Backend node process spawned successfully");
+                        app.manage(BackendProcess(std::sync::Mutex::new(Some(c))));
+                    }
                     Err(e) => println!("❌ Failed to spawn backend node process: {}", e),
                 }
             }

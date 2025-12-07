@@ -35,8 +35,11 @@ async function disconnectFromDevice() {
 function startPolling(io) {
   if (mockPollingInterval) return;
 
-  log("info", "[MOCK] Starting mock attendance event polling (5-second intervals).");
-  mockPollingInterval = setInterval(async () => {
+  // Default to 15 seconds if not configured
+    const interval = DEVICE_CONFIG.mockInterval || 15000;
+    
+    log("info", `[MOCK] Starting mock attendance event polling (${interval/1000}-second intervals).`);
+    mockPollingInterval = setInterval(async () => {
     const mockUserIds = Object.keys(MOCK_USERS);
     const randomUserId = mockUserIds[Math.floor(Math.random() * mockUserIds.length)];
     const mockUserData = MOCK_USERS[randomUserId];
@@ -66,7 +69,7 @@ function startPolling(io) {
     io.emit("attendance_event", attendanceRecord);
     await saveAttendanceRecord(attendanceRecord);
 
-  }, 5000);
+  }, interval);
 }
 
 function stopPolling() {

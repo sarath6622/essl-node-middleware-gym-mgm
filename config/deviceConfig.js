@@ -1,6 +1,7 @@
 const DEVICE_CONFIG = {
   // Set to true to use the mock device service for development without a physical device.
-  useMockDevice: false,
+  useMockDevice: true,
+  mockInterval: 15000, // 15 seconds
 
   // Auto-discovery settings
   autoDiscoverDevice: true, // <-- Set to false to use static IP (faster, more reliable)

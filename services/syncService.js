@@ -53,8 +53,8 @@ async function syncSingleRecord(record) {
     await saveAttendanceRecord(attendanceData);
     log('success', `✅ Synced offline record: ${attendanceData.name || attendanceData.userId}`);
 
-    // Return the DB ID so we can mark it as synced in SQLite
-    return { success: true, id: dbId || offlineTimestamp };
+    // Return the ID so we can mark it as synced
+    return { success: true, id: record.recordId || record.dbId || record.offlineTimestamp };
   } catch (error) {
     log('error', `Failed to sync record: ${error.message}`);
     return { success: false, error: error.message };
@@ -103,7 +103,9 @@ async function syncPendingRecords(io) {
 
       batchResults.forEach((result, index) => {
         if (result.success) {
-          syncedIds.push(result.id);
+          // Use recordId if available, fallback to legacy IDs
+          const record = batch[index]; // Access record from batch using index
+          syncedIds.push(record.recordId || record.dbId || record.offlineTimestamp);
           syncResults.synced++;
         } else {
           failedRecords.push(batch[index]);
