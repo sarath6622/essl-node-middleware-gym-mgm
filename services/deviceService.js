@@ -127,11 +127,20 @@ async function processAttendanceQueue(io) {
   }
 }
 
+const MAX_QUEUE_SIZE = 5000; // Protection against memory overflow
+
 /**
  * Queue an attendance event for background processing
  * This is NON-BLOCKING and returns immediately
  */
 function queueAttendanceEvent(data, source, io) {
+  // Protection: Drop events if queue is too large (prevents RAM saturation)
+  if (attendanceEventQueue.length >= MAX_QUEUE_SIZE) {
+    log("warning", `⚠️ Queue overflow! Dropping attendance event from ${source} (Queue size: ${attendanceEventQueue.length})`);
+    // Optional: Emit alert to UI
+    return;
+  }
+
   attendanceEventQueue.push({ data, source, timestamp: Date.now() });
   performanceMonitor.updateQueueSize(attendanceEventQueue.length);
 

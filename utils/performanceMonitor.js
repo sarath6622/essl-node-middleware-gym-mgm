@@ -21,13 +21,23 @@ let lastLoopTime = Date.now();
 
 function measureEventLoopLag() {
   const now = Date.now();
-  const lag = now - lastLoopTime - 100; // Expected 100ms interval
+  const elapsed = now - lastLoopTime;
+
+  // If elapsed time is significantly larger than interval (e.g. > 5 seconds)
+  // It surely means system sleep/suspension, not just event loop lag
+  if (elapsed > 5000) {
+    log("info", `ℹ️ System suspended for ${(elapsed / 1000).toFixed(1)}s - skipping lag check`);
+    lastLoopTime = now;
+    return 0; // Don't report this as lag
+  }
+
+  const lag = elapsed - 100; // Expected 100ms interval
   lastLoopTime = now;
-  
+
   if (lag > 0) {
     metrics.eventLoopLagMs = Math.max(0, lag);
   }
-  
+
   return metrics.eventLoopLagMs;
 }
 
@@ -80,19 +90,19 @@ function resetMetrics() {
  */
 function checkThresholds() {
   const warnings = [];
-  
+
   if (metrics.eventLoopLagMs > 100) {
     warnings.push(`Event loop lag: ${metrics.eventLoopLagMs}ms (threshold: 100ms)`);
   }
-  
+
   if (metrics.attendanceQueueSize > 20) {
     warnings.push(`Queue backed up: ${metrics.attendanceQueueSize} items (threshold: 20)`);
   }
-  
+
   if (metrics.avgProcessingTimeMs > 1000) {
     warnings.push(`Slow processing: ${metrics.avgProcessingTimeMs}ms avg (threshold: 1000ms)`);
   }
-  
+
   if (warnings.length > 0) {
     log("warning", "⚠️ Performance thresholds exceeded:");
     warnings.forEach(w => log("warning", `  - ${w}`));
