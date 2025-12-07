@@ -90,6 +90,50 @@ async function startServer() {
     // Initialize Socket.IO
     io = initializeSocket(httpServer);
     
+    // ==========================================
+    // AUTO-SHUTDOWN MECHANISM (Heartbeat)
+    // ==========================================
+    let shutdownTimer = null;
+
+    function startShutdownTimer(delay = 5000) {
+        if (shutdownTimer) clearTimeout(shutdownTimer);
+        // Only log if meaningful (not just resetting)
+        if (delay > 10000) log('info', `⏰ Starting initial shutdown timer (${delay/1000}s) - waiting for UI...`);
+        
+        shutdownTimer = setTimeout(() => {
+            log('warning', '⏰ No active clients for 5 seconds. Shutting down server.');
+            stopServer().then(() => process.exit(0));
+        }, delay);
+    }
+
+    function stopShutdownTimer() {
+        if (shutdownTimer) {
+            clearTimeout(shutdownTimer);
+            shutdownTimer = null;
+            // log('debug', '⏰ Client connected. Shutdown timer cancelled.');
+        }
+    }
+
+    // Monitor connections
+    io.on('connection', (socket) => {
+        stopShutdownTimer();
+        
+        socket.on('disconnect', () => {
+            // Check counts after a brief delay to allow for reloads/reconnects
+            setTimeout(() => {
+                if (!io || !io.engine) return; 
+                const count = io.engine.clientsCount;
+                if (count === 0) {
+                    startShutdownTimer(5000); // 5 seconds grace period
+                }
+            }, 1000); // 1 second buffer
+        });
+    });
+
+    // Start initial keep-alive timer (30s to allow app to launch)
+    startShutdownTimer(30000);
+    // ==========================================
+
     // Pass socket to logger if supported (we will add this to logger.js)
     if (log.setSocket) {
         log.setSocket(io);
