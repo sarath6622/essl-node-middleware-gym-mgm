@@ -58,17 +58,34 @@ let server = null;
 
 async function startServer() {
   return new Promise((resolve) => {
-    // FORCE MOCK MODE for production build assurance
-    console.log("⚠️ FORCING MOCK MODE FOR PRODUCTION BUILD ⚠️");
-    DEVICE_CONFIG.useMockDevice = true;
-    DEVICE_CONFIG.ip = 'mock-device'; // Ensure IP is set for UI display
+    // Explicitly require services for pkg detection with error handling
+    let mockService, realService;
+    try {
+        mockService = require('./mockDeviceService');
+    } catch (e) {
+        log('error', `Failed to load Mock Service: ${e.message}`);
+    }
 
-    // Explicitly require mock service for pkg detection
-    const mockService = require('./mockDeviceService');
-    // const realService = require('./deviceService'); 
+    try {
+        realService = require('./deviceService');
+    } catch (e) {
+        log('error', `Failed to load Real Device Service: ${e.message}`);
+        // Fallback to avoid crash if real service is corrupt
+        if (!mockService) process.exit(1);
+    }
 
-    // Initialize device service
-    deviceService = mockService;
+    // Initialize device service based on config
+    // Safety check: if realService failed to load, forced fallback or error?
+    if (!DEVICE_CONFIG.useMockDevice && !realService) {
+        log('error', 'Critical: Real device service requested but failed to load.');
+        // Don't crash, maybe fallback to mock or null? 
+        // Better to let it fail or invalid state than silent mock?
+        // Let's set it to null and handle checking later?
+        deviceService = mockService; // Emergency fallback
+        DEVICE_CONFIG.useMockDevice = true; // Switch mode
+    } else {
+        deviceService = DEVICE_CONFIG.useMockDevice ? mockService : realService;
+    }
 
     // Initialize Socket.IO
     io = initializeSocket(httpServer);
@@ -83,6 +100,10 @@ async function startServer() {
 
     app.use(cors()); // Enable CORS for all routes
     app.use(express.json());
+    
+    // Explicit Health Check for UI Polling
+    app.get('/', (req, res) => res.status(200).send('Backend Online'));
+    
     app.use('/', apiRoutes);
     app.use('/users', userManagementRoutes);
 
@@ -106,10 +127,7 @@ async function startServer() {
       // Auto-discover device if enabled
       handleAutoDiscovery();
 
-      // Test log to verify UI receiving data
-      setTimeout(() => {
-          log('info', '✅ Backend initialized and connected to UI');
-      }, 5000);
+
 
       resolve();
     });
