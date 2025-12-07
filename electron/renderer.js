@@ -153,17 +153,30 @@ function setupSocketIO() {
       console.log('✅ Socket.IO connected to server');
       footerStatus.textContent = 'Socket.IO connected - waiting for device connection';
       updateSystemStatus('socket', true);
+      updateSystemStatus('server', true); // Connection implies server is up
+    });
+
+    socket.on('system_status', (status) => {
+      console.log('Using initial system status:', status);
+      if (status.server) updateSystemStatus('server', true);
+      if (status.database) updateSystemStatus('database', true);
+      if (status.device) updateSystemStatus('device', true);
+      if (status.socket) updateSystemStatus('socket', true);
     });
 
     socket.on('connect_error', (error) => {
       console.error('❌ Socket.IO connection error:', error);
       footerStatus.textContent = 'Socket connection error';
+      updateSystemStatus('socket', false);
+      updateSystemStatus('server', false);
     });
 
     socket.on('disconnect', () => {
       console.log('⚠️ Socket.IO disconnected');
       footerStatus.textContent = 'Socket disconnected';
       updateStatus('Disconnected', 'disconnected');
+      updateSystemStatus('socket', false);
+      updateSystemStatus('server', false);
     });
 
     socket.on('attendance_event', (data) => {

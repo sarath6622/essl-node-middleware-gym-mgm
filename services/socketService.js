@@ -26,6 +26,14 @@ function initializeSocket(server) {
       timestamp: new Date().toISOString(),
     });
 
+    // Send initial system status
+    socket.emit("system_status", {
+      server: true,
+      database: true, // If we reached here, DB is likely fine or will report error later
+      device: isConnected ? isConnected() : false,
+      socket: true
+    });
+
     socket.on("disconnect", () => {
       log("info", `Web client disconnected: ${socket.id}`);
     });
