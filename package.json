@@ -18,7 +18,9 @@
     "build:linux": "electron-builder --linux",
     "dist": "electron-builder --mac --win --linux",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build-backend": "pkg . --targets node18-win-x64 --output backend-win-x64.exe"
+    "build-backend:win": "pkg . --targets node18-win-x64 --output src-tauri/binaries/backend-x86_64-pc-windows-msvc.exe",
+    "build-backend:mac": "pkg . --targets node18-macos-arm64 --output src-tauri/binaries/backend-aarch64-apple-darwin",
+    "build-binaries": "npm run build-backend:mac && npm run build-backend:win"
   },
   "pkg": {
     "scripts": [
@@ -32,7 +34,8 @@
       "node_modules/zkteco-js/**/*"
     ],
     "targets": [
-      "node18-win-x64"
+      "node18-win-x64",
+      "node18-macos-arm64"
     ]
   },
   "keywords": [
