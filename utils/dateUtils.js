@@ -11,17 +11,24 @@
 function getDateInTimezone(timestamp, timezone = "Asia/Kolkata") {
   try {
     const date = new Date(timestamp);
-    
-    // Format date in the specified timezone
+
+    // Use formatToParts for deterministic formatting regardless of locale
     const options = {
       timeZone: timezone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
     };
-    
-    const formatter = new Intl.DateTimeFormat('en-CA', options); // en-CA gives YYYY-MM-DD format
-    return formatter.format(date);
+
+    const formatter = new Intl.DateTimeFormat('en-US', options);
+    const parts = formatter.formatToParts(date);
+
+    // Manually assemble YYYY-MM-DD
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+
+    return `${year}-${month}-${day}`;
   } catch (error) {
     console.error(`Error converting date to timezone ${timezone}:`, error);
     // Fallback to UTC date
