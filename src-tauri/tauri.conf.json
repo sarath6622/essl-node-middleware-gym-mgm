@@ -64,7 +64,9 @@
         "providerShortName": null,
         "signingIdentity": null
       },
-      "resources": [],
+      "resources": [
+        "../config/serviceAccountKey.json"
+      ],
       "shortDescription": "",
       "targets": "all",
       "windows": {

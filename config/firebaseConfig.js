@@ -7,16 +7,33 @@ let realtimeDb = null;
 
 try {
   // Try to find serviceAccountKey.json in different locations
+  // Try to find serviceAccountKey.json in different locations
   let serviceAccount;
   
   try {
-    // Try relative path first (development)
+    // 1. Try embedded (dev or pkg snapshot)
     serviceAccount = require("./serviceAccountKey.json");
+    // log('info', '✅ Loaded embedded serviceAccountKey.json');
   } catch (e) {
-    // Try in app resources (production build)
-    const resourcePath = path.join(process.resourcesPath || __dirname, "config", "serviceAccountKey.json");
-    serviceAccount = require(resourcePath);
+    // 2. Try external file in resources (Production Tauri/Electron)
+    const possiblePaths = [
+        path.join(process.cwd(), 'resources', 'serviceAccountKey.json'), // Tauri default
+        path.join(process.cwd(), 'resources', 'config', 'serviceAccountKey.json'), // Electron/Tauri nested
+        path.join(process.cwd(), 'serviceAccountKey.json'), // Root fallback
+    ];
+
+    for (const p of possiblePaths) {
+        try {
+            serviceAccount = require(p);
+            log('info', `✅ Loaded external credentials from: ${p}`);
+            break;
+        } catch (err) {
+            // Continue
+        }
+    }
   }
+
+  if (!serviceAccount) throw new Error("Could not find serviceAccountKey.json in any location.");
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
