@@ -21,7 +21,7 @@ let realtimeListenerSetup = false;
 let lastRealtimeEventTime = null;
 let realtimeFailureCount = 0;
 let pollingFailureCount = 0;
-const MAX_POLLING_FAILURES = 3;
+const MAX_POLLING_FAILURES = 2; // REDUCED: Detect disconnect faster (2 x 5s = ~10s)
 
 // Duplicate detection cache: biometricId -> last processed timestamp (ms)
 const DUPLICATE_WINDOW_MS = 60 * 1000; // 1 minute
@@ -62,7 +62,7 @@ const deviceCircuitBreaker = new CircuitBreaker({
 });
 
 // Polling configuration
-const POLLING_INTERVAL = 10000; // 10 seconds
+const POLLING_INTERVAL = 5000; // REDUCED: Check every 5 seconds (was 10s)
 const REALTIME_TIMEOUT = 60000; // If no real-time event in 60s, assume failure (increased from 30s)
 const MAX_REALTIME_FAILURES = 3; // After 3 failures, switch to polling mode
 let permanentPollingMode = false; // Once we switch to polling, stay there
@@ -639,7 +639,7 @@ function stopPolling() {
 
 // Watchdog state
 let watchdogInterval = null;
-const WATCHDOG_CHECK_INTERVAL = 15000; // Check every 15 seconds
+const WATCHDOG_CHECK_INTERVAL = 10000; // REDUCED: Check every 10 seconds (was 15s)
 
 /**
  * Starts the connection watchdog.
