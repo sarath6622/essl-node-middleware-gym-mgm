@@ -609,6 +609,49 @@ function stopPolling() {
   }
 }
 
+// Watchdog state
+let watchdogInterval = null;
+const WATCHDOG_CHECK_INTERVAL = 15000; // Check every 15 seconds
+
+/**
+ * Starts the connection watchdog.
+ * Continouusly checks if device is connected, and retries if not.
+ */
+function startConnectionWatchdog(io) {
+  if (watchdogInterval) return;
+
+  log("info", "🛡️ Starting Connection Watchdog...");
+
+  watchdogInterval = setInterval(async () => {
+    // If already connected, do nothing (maybe ping? but zk lib handles keepalive)
+    if (isConnected) return;
+
+    // If we are currently trying to connect (circuit breaker might be open or busy), skip
+    const cbState = deviceCircuitBreaker.getState();
+    if (cbState.state === "OPEN") {
+      // Log occasionally?
+      return;
+    }
+
+    log("info", "🛡️ Watchdog: Device disconnected. Attempting to reconnect...");
+
+    // Attempt connection
+    // We pass useRetry=false because the watchdog IS the retry mechanism
+    // but we can use useRetry=true to let the inner logic handle a burst of attempts?
+    // Let's use useRetry=true so we get the "burst" of 3 attempts, then wait for circuit breaker
+    await connectToDevice(io, true);
+
+  }, WATCHDOG_CHECK_INTERVAL);
+}
+
+function stopConnectionWatchdog() {
+  if (watchdogInterval) {
+    clearInterval(watchdogInterval);
+    watchdogInterval = null;
+    log("info", "🛡️ Connection Watchdog stopped");
+  }
+}
+
 async function disconnectFromDevice() {
   if (isConnected && zk) {
     try {
@@ -695,4 +738,6 @@ module.exports = {
   resetCircuitBreaker,
   getPollingStats,
   getAttendanceQueueStats,
+  startConnectionWatchdog,
+  stopConnectionWatchdog
 };
