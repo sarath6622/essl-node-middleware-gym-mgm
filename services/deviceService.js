@@ -20,6 +20,8 @@ let isInitialSync = true; // Flag to track initial sync
 let realtimeListenerSetup = false;
 let lastRealtimeEventTime = null;
 let realtimeFailureCount = 0;
+let pollingFailureCount = 0;
+const MAX_POLLING_FAILURES = 3;
 
 // Duplicate detection cache: biometricId -> last processed timestamp (ms)
 const DUPLICATE_WINDOW_MS = 60 * 1000; // 1 minute
@@ -501,7 +503,19 @@ async function pollAttendanceLogs(io) {
   if (!isConnected || !zk) return;
 
   try {
-    const logs = await zk.getAttendances();
+    // Timeout the polling request to prevent hanging
+    const pollingPromise = zk.getAttendances();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Polling timeout')), 8000)
+    );
+
+    const logs = await Promise.race([pollingPromise, timeoutPromise]);
+
+    // Reset failure count on success
+    if (pollingFailureCount > 0) {
+      pollingFailureCount = 0;
+      log("debug", "Polling recovered. Failure count reset.");
+    }
 
     // On initial sync, just set the count and skip processing old logs
     if (isInitialSync) {
@@ -531,7 +545,21 @@ async function pollAttendanceLogs(io) {
       lastLogCount = logs.data.length;
     }
   } catch (err) {
-    log("debug", "Polling error (normal if device is busy):", err.message);
+    pollingFailureCount++;
+    log("warning", `⚠️ Polling error/timeout (${pollingFailureCount}/${MAX_POLLING_FAILURES}): ${err.message}`);
+
+    if (pollingFailureCount >= MAX_POLLING_FAILURES) {
+      log("error", `❌ Too many consecutive polling failures (${pollingFailureCount}). Marking device as disconnected.`);
+      io.emit("device_status", {
+        connected: false,
+        deviceIp: DEVICE_CONFIG.ip,
+        error: "Connection lost (poll failed)",
+        timestamp: new Date().toISOString(),
+      });
+
+      // Force disconnect - this will trigger the Watchdog to start reconnecting
+      await disconnectFromDevice();
+    }
   }
 }
 
