@@ -315,20 +315,7 @@ async function forceSyncNow(io) {
   return { success: true, results };
 }
 
-/**
- * Clean up old synced records
- */
-async function cleanupOldRecords() {
-  try {
-    await offlineStorage.cleanupSyncedRecords();
-    log('success', '✅ Old synced records cleaned up');
-  } catch (error) {
-    log('error', `Failed to cleanup old records: ${error.message}`);
-  }
-}
 
-// Clean up old records daily
-setInterval(cleanupOldRecords, 24 * 60 * 60 * 1000);
 
 module.exports = {
   startSync,
@@ -336,6 +323,5 @@ module.exports = {
   getSyncStatus,
   forceSyncNow,
   syncPendingRecords,
-  checkFirebaseConnection,
-  cleanupOldRecords
+  checkFirebaseConnection
 };
