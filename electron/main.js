@@ -17,7 +17,6 @@ process.on('uncaughtException', (err) => {
   debugLog(`CRITICAL ERROR: ${err.message}\n${err.stack}`);
   process.exit(1);
 });
-const path = require('path');
 const http = require('http');
 const express = require('express');
 const log = require('../utils/logger');
@@ -88,7 +87,7 @@ function createWindow() {
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
-  
+
   // Set electron window for logger
   log.setElectronWindow(mainWindow);
 }
@@ -96,17 +95,17 @@ function createWindow() {
 function createTray() {
   // You can replace this with a custom icon
   tray = new Tray(path.join(__dirname, 'icon.png'));
-  
+
   const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Show App', 
+    {
+      label: 'Show App',
       click: () => {
         mainWindow.show();
       }
     },
     { type: 'separator' },
-    { 
-      label: 'Quit', 
+    {
+      label: 'Quit',
       click: () => {
         app.isQuitting = true;
         app.quit();
@@ -408,16 +407,16 @@ ipcMain.handle('scan-network', async () => {
   const { scanForDevices } = require('../utils/networkScanner');
   try {
     const devices = await scanForDevices(false);
-    
+
     // Include currently connected device IP
-    const connectedIP = (deviceService && deviceService.isConnected && deviceService.isConnected()) 
-      ? DEVICE_CONFIG.ip 
+    const connectedIP = (deviceService && deviceService.isConnected && deviceService.isConnected())
+      ? DEVICE_CONFIG.ip
       : null;
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       devices,
-      connectedIP 
+      connectedIP
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -441,28 +440,28 @@ ipcMain.handle('reconnect', async () => {
   if (!deviceService || !io) {
     return { success: false, error: 'Service not initialized' };
   }
-  
+
   // If auto-discovery is enabled, scan for device first
   if (!DEVICE_CONFIG.useMockDevice && DEVICE_CONFIG.autoDiscoverDevice) {
     log('info', '🔍 Running auto-discovery before reconnection...');
-    
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('scan-started');
     }
-    
+
     try {
       const discoveredIP = await findFirstDevice(true);
-      
+
       if (discoveredIP) {
         DEVICE_CONFIG.ip = discoveredIP;
         log('success', `✅ Device discovered at ${discoveredIP}`);
-        
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('device-discovered', { ip: discoveredIP });
         }
       } else {
         log('warning', '⚠️ Auto-discovery found no device, using configured IP');
-        
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('device-not-found', {
             suggestions: [
@@ -477,7 +476,7 @@ ipcMain.handle('reconnect', async () => {
       log('warning', 'Proceeding with configured IP...');
     }
   }
-  
+
   // Attempt connection with discovered or configured IP
   const success = await deviceService.connectToDevice(io);
   return { success };
@@ -487,50 +486,50 @@ ipcMain.handle('connect-to-ip', async (event, ip) => {
   if (!deviceService || !io) {
     return { success: false, error: 'Service not initialized' };
   }
-  
+
   log('info', `User manually selected device at ${ip}`);
-  
+
   // Update the config with the selected IP
   DEVICE_CONFIG.ip = ip;
-  
+
   // Send connecting status
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('connecting', { ip: ip, isMock: false });
   }
-  
+
   try {
     // Disconnect from any existing connection first
     if (deviceService.isConnected && deviceService.isConnected()) {
       log('info', 'Disconnecting from current device...');
       await deviceService.disconnectFromDevice();
     }
-    
+
     // Attempt connection
     const connected = await deviceService.connectToDevice(io);
-    
+
     if (connected) {
       log('success', `✅ Successfully connected to device at ${ip}`);
-      
+
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('device-connected', { ip: ip });
       }
-      
+
       // Initialize Firebase listener if not mock device
       if (!DEVICE_CONFIG.useMockDevice) {
         log('info', '🎯 Initializing auto-enrollment from Firebase...');
         initializeMemberEnrollmentListener(deviceService);
       }
-      
+
       // Start polling
       setTimeout(() => {
         log('info', 'Starting backup polling mechanism...');
         deviceService.startPolling(io);
       }, 10000);
-      
+
       return { success: true };
     } else {
       log('error', `❌ Failed to connect to device at ${ip}`);
-      
+
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('connection-failed', {
           ip: ip,
@@ -541,19 +540,19 @@ ipcMain.handle('connect-to-ip', async (event, ip) => {
           ]
         });
       }
-      
+
       return { success: false, error: 'Connection failed' };
     }
   } catch (error) {
     log('error', `Connection error: ${error.message}`);
-    
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('connection-failed', {
         ip: ip,
         error: error.message
       });
     }
-    
+
     return { success: false, error: error.message };
   }
 });
@@ -591,7 +590,7 @@ ipcMain.handle('get-offline-stats', async () => {
 app.whenReady().then(async () => {
   createWindow();
   createTray();
-  
+
   // Wait for window to be ready before starting server
   mainWindow.webContents.on('did-finish-load', async () => {
     // Small delay to ensure renderer is fully initialized
