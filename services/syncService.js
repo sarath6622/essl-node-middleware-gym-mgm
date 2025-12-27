@@ -7,6 +7,7 @@ const offlineStorage = require('./offlineStorage');
 const { saveAttendanceRecord } = require('./firestoreService');
 const { db } = require('../config/firebaseConfig');
 const log = require('../utils/logger');
+const path = require('path');
 
 let syncInterval = null;
 let isSyncing = false;
@@ -19,7 +20,8 @@ let cachedPendingCount = 0;
 let lastPendingCountUpdate = null;
 const PENDING_COUNT_CACHE_TTL = 60000; // 1 minute cache
 
-const SYNC_INTERVAL = 30000; // Check every 30 seconds
+const DEVICE_CONFIG = require('../config/deviceConfig');
+const SYNC_INTERVAL = DEVICE_CONFIG.syncInterval || 1800000; // Default to 30 mins if missing
 const MAX_CONSECUTIVE_FAILURES = 3;
 const BATCH_SIZE = 10; // Sync 10 records at a time
 
@@ -73,73 +75,85 @@ async function syncPendingRecords(io) {
   isSyncing = true;
   lastSyncAttempt = new Date().toISOString();
 
-  try {
-    const pendingRecords = await offlineStorage.getPendingAttendance();
+  const syncResults = { synced: 0, failed: 0, pending: 0 };
 
-    if (pendingRecords.length === 0) {
+  try {
+    // 1. Rotate the current pending file to isolate it as a batch
+    await offlineStorage.rotatePendingFile();
+
+    // 2. Get all batch files (including the one we just rotated)
+    const batches = await offlineStorage.getBatches();
+
+    if (batches.length === 0) {
       log('debug', 'No pending records to sync');
       isSyncing = false;
-      return { synced: 0, failed: 0, pending: 0 };
+      return syncResults;
     }
 
-    log('info', `📤 Starting sync of ${pendingRecords.length} pending records...`);
+    log('info', `📤 Starting sync of ${batches.length} batch files...`);
 
-    const syncResults = {
-      synced: 0,
-      failed: 0,
-      pending: pendingRecords.length
-    };
+    // 3. Process each batch file
+    for (const batchPath of batches) {
+      const batchFailures = [];
+      let batchSynced = 0;
 
-    const syncedIds = [];
-    const failedRecords = [];
+      const rl = offlineStorage.createBatchStream(batchPath);
+      if (!rl) continue; // Skip if file invalid
 
-    // Process records in batches
-    for (let i = 0; i < pendingRecords.length; i += BATCH_SIZE) {
-      const batch = pendingRecords.slice(i, i + BATCH_SIZE);
+      // Process line by line (Stream)
+      for await (const line of rl) {
+        if (!line.trim()) continue;
 
-      const batchResults = await Promise.all(
-        batch.map(record => syncSingleRecord(record))
-      );
+        try {
+          const record = JSON.parse(line);
+          const result = await syncSingleRecord(record);
 
-      batchResults.forEach((result, index) => {
-        if (result.success) {
-          // Use recordId if available, fallback to legacy IDs
-          const record = batch[index]; // Access record from batch using index
-          syncedIds.push(record.recordId || record.dbId || record.offlineTimestamp);
-          syncResults.synced++;
-        } else {
-          failedRecords.push(batch[index]);
-          syncResults.failed++;
+          if (result.success) {
+            syncResults.synced++;
+            batchSynced++;
+          } else {
+            record.syncError = result.error; // Add error info
+            batchFailures.push(record);
+            syncResults.failed++;
+          }
+        } catch (e) {
+          log('error', `Skipping malformed line in batch: ${e.message}`);
         }
-      });
+      }
 
-      // Emit progress update
+      // 4. Handle Batch Completion
+      if (batchFailures.length === 0) {
+        // Full success: Delete batch file
+        await offlineStorage.deleteBatch(batchPath);
+      } else {
+        // Partial/Full failure: Requeue failed records to current pending file
+        // and then delete the old batch file (since we moved the failed ones back)
+        // This prevents infinite loops of bad files - they get re-appended to the end
+        await offlineStorage.requeueFailedRecords(batchFailures);
+
+        // Only delete if we successfully requeued (requeue method logs errors but doesn't throw)
+        // For safety, we assume requeue worked if no crash.
+        await offlineStorage.deleteBatch(batchPath);
+      }
+
+      // Report progress per batch
       if (io) {
         io.emit('sync_progress', {
-          total: pendingRecords.length,
           synced: syncResults.synced,
           failed: syncResults.failed,
-          progress: Math.round(((i + batch.length) / pendingRecords.length) * 100)
+          batch: path.basename(batchPath)
         });
       }
     }
 
-    // Mark successfully synced records
-    if (syncedIds.length > 0) {
-      await offlineStorage.markAsSynced(syncedIds);
-      consecutiveFailures = 0;
-    }
-
-    // Update pending count
-    syncResults.pending = pendingRecords.length - syncResults.synced;
-
-    // Update cached pending count
+    // Update cached pending count (Stats structure changed)
+    const stats = await offlineStorage.getStats();
+    syncResults.pending = stats.estimatedPendingRecords;
     cachedPendingCount = syncResults.pending;
     lastPendingCountUpdate = Date.now();
 
-    log('success', `✅ Sync completed: ${syncResults.synced} synced, ${syncResults.failed} failed, ${syncResults.pending} pending`);
+    log('success', `✅ Sync completed: ${syncResults.synced} synced, ${syncResults.failed} failed`);
 
-    // Emit sync complete event
     if (io) {
       io.emit('sync_complete', syncResults);
     }
@@ -151,12 +165,8 @@ async function syncPendingRecords(io) {
     log('error', `Sync failed: ${error.message}`);
     consecutiveFailures++;
     isSyncing = false;
-
-    if (io) {
-      io.emit('sync_error', { error: error.message });
-    }
-
-    return { synced: 0, failed: 0, pending: 0, error: error.message };
+    if (io) io.emit('sync_error', { error: error.message });
+    return { ...syncResults, error: error.message };
   }
 }
 
@@ -173,7 +183,7 @@ async function getPendingCount() {
 
   // Cache is stale, refresh it
   const stats = await offlineStorage.getStats();
-  cachedPendingCount = stats.pendingSync;
+  cachedPendingCount = stats.estimatedPendingRecords || stats.pendingSyncFiles; // Fallback or new prop
   lastPendingCountUpdate = now;
 
   return cachedPendingCount;
@@ -278,7 +288,8 @@ async function getSyncStatus() {
     isSyncing,
     lastSyncAttempt,
     consecutiveFailures,
-    pendingRecords: stats.pendingSync,
+    consecutiveFailures,
+    pendingRecords: stats.estimatedPendingRecords,
     cachedUsers: stats.cachedUsers
   };
 }

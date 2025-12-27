@@ -17,6 +17,8 @@ const app = express();
 const cors = require("cors");
 const server = http.createServer(app);
 const io = initializeSocket(server);
+const syncService = require("./services/syncService");
+syncService.startSync(io); // Start sync service immediately
 
 app.set("io", io);
 app.set("deviceService", deviceService);

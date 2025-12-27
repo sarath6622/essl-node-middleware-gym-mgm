@@ -19,12 +19,14 @@ class OfflineStorageService {
   init() {
     const appDataPath = process.env.APPDATA ||
       (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
-    
+
     this.storageDir = path.join(appDataPath, 'ZK-Attendance', 'offline-data');
-    this.attendanceFile = path.join(this.storageDir, 'pending-attendance.json'); // Keeping .json extension for compatibility, but content is NDJSON
+    this.batchesDir = path.join(this.storageDir, 'batches'); // New: Dedicated batches directory
+    this.attendanceFile = path.join(this.storageDir, 'pending-attendance.json'); // Still the active write head
     this.usersFile = path.join(this.storageDir, 'users-cache.json');
 
     fs.ensureDirSync(this.storageDir);
+    fs.ensureDirSync(this.batchesDir);
     this._migrateToNdjson();
   }
 
@@ -76,17 +78,20 @@ class OfflineStorageService {
    */
   async saveOfflineAttendance(attendanceData) {
     try {
+      // If we are strictly offline-first, we don't strictly need 'syncStatus' inside the object 
+      // because separation is done by file location (pending file vs batch file), 
+      // but keeping it doesn't hurt.
       const newRecord = {
         ...attendanceData,
-        recordId: Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9), // Unique ID for sync tracking
+        recordId: Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9),
         offlineTimestamp: new Date().toISOString(),
         syncStatus: 'pending'
       };
 
       const line = JSON.stringify(newRecord) + '\n';
       await fs.appendFile(this.attendanceFile, line);
-      
-      log('info', `💾 Saved attendance offline (NDJSON): ${attendanceData.userId || attendanceData.userSn}`);
+
+      log('info', `💾 Saved attendance offline: ${attendanceData.userId || attendanceData.userSn}`);
       return true;
     } catch (error) {
       log('error', `Failed to save offline attendance: ${error.message}`);
@@ -95,107 +100,86 @@ class OfflineStorageService {
   }
 
   /**
-   * Get all pending offline attendance records
-   * Reads line by line
+   * ROTATE LOGS (Atomic Operation)
+   * Renames the current pending file to a batch file for processing.
+   * This guarantees that new writes go to a new empty file, isolationg the batch.
    */
-  async getPendingAttendance() {
+  async rotatePendingFile() {
     try {
       if (!await fs.pathExists(this.attendanceFile)) {
-        return [];
+        return null;
       }
 
-      const fileStream = fs.createReadStream(this.attendanceFile);
-      const rl = readline.createInterface({
-        input: fileStream,
-        crlfDelay: Infinity
-      });
+      const stats = await fs.stat(this.attendanceFile);
+      if (stats.size === 0) return null;
 
-      const pendingRecords = [];
+      const timestamp = Date.now();
+      const batchFileName = `batch-${timestamp}.ndjson`;
+      const batchPath = path.join(this.batchesDir, batchFileName);
 
-      for await (const line of rl) {
-        if (!line.trim()) continue;
-        try {
-          const record = JSON.parse(line);
-          if (record.syncStatus === 'pending') {
-            pendingRecords.push(record);
-          }
-        } catch (e) {
-          // Skip malformed lines
-        }
-      }
-
-      return pendingRecords;
+      // Atomic rename
+      await fs.rename(this.attendanceFile, batchPath);
+      log('info', `🔄 Rotated pending log to batch: ${batchFileName}`);
+      return batchPath;
     } catch (error) {
-      log('error', `Failed to get pending: ${error.message}`);
+      log('error', `Failed to rotate pending file: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get list of all batch files waiting to be processed
+   */
+  async getBatches() {
+    try {
+      const files = await fs.readdir(this.batchesDir);
+      return files
+        .filter(f => f.startsWith('batch-') && f.endsWith('.ndjson'))
+        .map(f => path.join(this.batchesDir, f))
+        .sort(); // Oldest first
+    } catch (error) {
+      log('error', `Failed to list batches: ${error.message}`);
       return [];
     }
   }
 
   /**
-   * Mark attendance records as synced
-   * Refactored to rewrite the NDJSON file excluding synced items
+   * Create a read stream interface for a batch file
+   * This allows processing line-by-line without loading 100MB into RAM
    */
-  async markAsSynced(syncedIdsOrRecords) {
+  createBatchStream(batchPath) {
+    if (!fs.existsSync(batchPath)) return null;
+    const fileStream = fs.createReadStream(batchPath);
+    return readline.createInterface({
+      input: fileStream,
+      crlfDelay: Infinity
+    });
+  }
+
+  /**
+   * Re-queue failed records back to the MAIN pending file
+   */
+  async requeueFailedRecords(records) {
+    if (!records || records.length === 0) return;
     try {
-      if (!await fs.pathExists(this.attendanceFile)) {
-        return;
-      }
-
-      const idsToSync = new Set(syncedIdsOrRecords.map(item => {
-        if (typeof item === 'string') return item;
-        if (item.recordId) return item.recordId; 
-        if (item.dbId) return item.dbId;
-        return null; 
-      }).filter(Boolean));
-
-      if (idsToSync.size === 0) return;
-
-      // Read all, filter, rewrite (Maintenance cost is acceptable here)
-      // For very large files, we could rename and stream-filter to new file, but loading into memory is fine for < 100MB
-      
-      const fileStream = fs.createReadStream(this.attendanceFile);
-      const rl = readline.createInterface({
-        input: fileStream,
-        crlfDelay: Infinity
-      });
-
-      const remainingLines = [];
-      let syncedCount = 0;
-
-      for await (const line of rl) {
-        if (!line.trim()) continue;
-        try {
-          const record = JSON.parse(line);
-          if (idsToSync.has(record.recordId) || idsToSync.has(record.dbId)) {
-            syncedCount++;
-          } else {
-            remainingLines.push(line);
-          }
-        } catch (e) {
-          // Keep malformed lines? No, better to drop them to self-heal
-        }
-      }
-
-      if (syncedCount > 0) {
-        // Atomic replace: Write to temp file then rename
-        const tempFile = `${this.attendanceFile}.tmp`;
-        const newContent = remainingLines.length > 0 ? remainingLines.join('\n') + '\n' : '';
-        await fs.writeFile(tempFile, newContent);
-        await fs.move(tempFile, this.attendanceFile, { overwrite: true });
-        
-        log('success', `✅ marked ${syncedCount} records as synced (removed from pending)`);
-      }
-      
+      const lines = records.map(r => JSON.stringify(r)).join('\n') + '\n';
+      await fs.appendFile(this.attendanceFile, lines);
+      log('warning', `↩️ Re-queued ${records.length} failed records to pending file`);
     } catch (error) {
-      log('error', `Failed to mark records as synced: ${error.message}`);
+      log('error', `CRITICAL: Failed to requeue records: ${error.message}`);
     }
   }
 
   /**
-   * Clean up old synced records
+   * Delete a processed batch file
    */
-  async cleanupSyncedRecords() {
-    return;
+  async deleteBatch(batchPath) {
+    try {
+      await fs.unlink(batchPath);
+      // log('debug', `🗑️ Deleted processed batch: ${path.basename(batchPath)}`);
+    } catch (error) {
+      log('error', `Failed to delete batch ${batchPath}: ${error.message}`);
+    }
   }
 
   /**
@@ -254,12 +238,12 @@ class OfflineStorageService {
       // Strip prefix if present (e.g., "data:image/jpeg;base64,")
       const base64Image = base64Data.split(';base64,').pop();
       const buffer = Buffer.from(base64Image, 'base64');
-      
+
       const fileName = `${userId}.jpg`;
       const filePath = path.join(photoDir, fileName);
-      
+
       await fs.writeFile(filePath, buffer);
-      
+
       // Return relative path for portability
       return `photos/${fileName}`;
     } catch (error) {
@@ -278,7 +262,7 @@ class OfflineStorageService {
       if (!relativePath) return null;
 
       const filePath = path.join(this.storageDir, relativePath);
-      
+
       if (!await fs.pathExists(filePath)) {
         return null;
       }
@@ -296,15 +280,20 @@ class OfflineStorageService {
    */
   async getStats() {
     try {
-      let pendingCount = 0;
+      let pendingLines = 0;
+      let batchCount = 0;
       let userCount = 0;
       let photoCount = 0;
 
       if (await fs.pathExists(this.attendanceFile)) {
-        // Fast line counting
-        const content = await fs.readFile(this.attendanceFile, 'utf-8');
-        // Count non-empty lines
-        pendingCount = content.split('\n').filter(line => line.trim().length > 0).length;
+        // Just checking size might be faster than reading lines for stats
+        const stats = await fs.stat(this.attendanceFile);
+        pendingLines = Math.ceil(stats.size / 150); // Rough estimate
+      }
+
+      if (await fs.pathExists(this.batchesDir)) {
+        const files = await fs.readdir(this.batchesDir);
+        batchCount = files.filter(f => f.endsWith('.ndjson')).length;
       }
 
       if (await fs.pathExists(this.usersFile)) {
@@ -314,19 +303,19 @@ class OfflineStorageService {
 
       const photoDir = path.join(this.storageDir, 'photos');
       if (await fs.pathExists(photoDir)) {
-          const files = await fs.readdir(photoDir);
-          photoCount = files.length;
+        const files = await fs.readdir(photoDir);
+        photoCount = files.length;
       }
 
       return {
-        pendingSync: pendingCount,
+        pendingSyncFiles: batchCount,
+        estimatedPendingRecords: pendingLines + (batchCount * 50), // Rough guess
         cachedUsers: userCount,
-        totalLogs: pendingCount,
         cachedPhotos: photoCount,
-        storageType: 'NDJSON + FileSystem (Optimized)'
+        storageType: 'Log Rotation (Atomic)'
       };
     } catch (error) {
-      return { pendingSync: 0, cachedUsers: 0 };
+      return { pendingSyncFiles: 0, cachedUsers: 0 };
     }
   }
 }

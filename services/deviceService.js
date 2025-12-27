@@ -24,7 +24,8 @@ let pollingFailureCount = 0;
 const MAX_POLLING_FAILURES = 2; // REDUCED: Detect disconnect faster (2 x 5s = ~10s)
 
 // Duplicate detection cache: biometricId -> last processed timestamp (ms)
-const DUPLICATE_WINDOW_MS = 60 * 1000; // 1 minute
+// Duplicate detection cache: biometricId -> last processed timestamp (ms)
+const DUPLICATE_WINDOW_MS = DEVICE_CONFIG.duplicateCheckWindow || 60 * 1000; // Default to config or 1 minute
 const RECENT_CACHE_PRUNE_INTERVAL_MS = 60 * 1000; // MEMORY OPTIMIZATION: 1 minute (was 5 minutes)
 const MAX_RECENT_CACHE_SIZE = 1000; // MEMORY OPTIMIZATION: Prevent unbounded growth
 const recentAttendanceCache = new Map();
@@ -198,8 +199,13 @@ async function processAndSaveRecord(rawRecord, source, io) {
 
   let attendanceRecord;
 
-  // If user not found, create record with unknown user
+  // If user not found, handle unknown user
   if (!userDetails) {
+    if (DEVICE_CONFIG.ignoreUnknownUsers) {
+      log("debug", `🚫 Ignored unknown user event: ${biometricId} (not in database)`);
+      return; // GRACEFUL IGNORE
+    }
+
     log("warning", `⚠️ Unknown user - biometricDeviceId: ${biometricId} (not in database)`);
 
     // Still create and emit event for UI display
@@ -253,30 +259,24 @@ async function processAndSaveRecord(rawRecord, source, io) {
   // Emit to UI immediately (don't wait for Firestore save) - use room-based broadcast
   io.to("attendance").emit("attendance_event", attendanceRecord);
 
-  // Save to Firestore in background (don't await)
-  saveAttendanceRecord(attendanceRecord).catch(async err => {
-    log("error", `Failed to save attendance to Firestore for ${attendanceRecord.name}:`, err.message);
-    log("warning", `💾 Saving to offline storage...`);
+  // Save to Offline Storage (Offline-First Architecture)
+  // We save to disk IMMEDIATELY. The syncService will handle uploading to Firestore later.
+  const offlineSaved = await offlineStorage.saveOfflineAttendance(attendanceRecord);
 
-    // Save to offline storage when Firebase is unavailable
-    const offlineSaved = await offlineStorage.saveOfflineAttendance(attendanceRecord);
+  if (offlineSaved) {
+    log("success", `💾 Saved attendance offline: ${attendanceRecord.name}`);
 
-    if (offlineSaved) {
-      // Emit offline event so UI can show offline indicator - use room-based broadcast
-      io.to("attendance").emit("attendance_saved_offline", {
-        userId: attendanceRecord.userId,
-        name: attendanceRecord.name,
-        timestamp: attendanceRecord.checkInTime
-      });
-    } else {
-      // Emit error event if both Firebase and offline storage failed - use room-based broadcast
-      io.to("attendance").emit("attendance_save_failed", {
-        userId: attendanceRecord.userId,
-        name: attendanceRecord.name,
-        error: err.message
-      });
-    }
-  });
+    // Emit event so UI shows it "Waiting for Sync" or similar if needed
+    // But currently the UI just shows the event. 
+    // We can emit a specific status if the UI supports it.
+  } else {
+    log("error", `❌ Failed to save attendance offline! Data risk for ${attendanceRecord.name}`);
+    io.to("attendance").emit("attendance_save_failed", {
+      userId: attendanceRecord.userId,
+      name: attendanceRecord.name,
+      error: "Critical: Failed to save to local disk"
+    });
+  }
 }
 
 /**
