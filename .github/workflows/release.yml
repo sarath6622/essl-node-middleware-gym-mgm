@@ -40,9 +40,15 @@ jobs:
           echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > config/serviceAccountKey.json
         shell: bash
 
-      # Build the Node.js sidecar binaries (pkg)
-      - name: build sidecar binaries
-        run: npm run build-binaries
+      # Build sidecar binary for macOS
+      - name: build sidecar (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: npm run build-backend:mac
+
+      # Build sidecar binary for Windows
+      - name: build sidecar (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: npm run build-backend:win
 
       - uses: tauri-apps/tauri-action@v0
         env:
