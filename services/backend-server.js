@@ -165,6 +165,19 @@ async function startServer() {
     // Explicit Health Check for UI Polling
     app.get('/', (req, res) => res.status(200).send('Backend Online'));
 
+    // Config endpoint for UI
+    app.get('/config', (req, res) => {
+      res.json({
+        success: true,
+        config: {
+          ip: DEVICE_CONFIG.ip,
+          port: DEVICE_CONFIG.port,
+          timeout: DEVICE_CONFIG.timeout,
+          useMockDevice: DEVICE_CONFIG.useMockDevice
+        }
+      });
+    });
+
     // Sentry Debug Route
     app.get("/debug-sentry", function mainHandler(req, res) {
       throw new Error("My first Sentry error!");

@@ -1,19 +1,9 @@
 // Renderer Process JavaScript
 // UI logic and event handling
-const Sentry = require('@sentry/browser');
 
-Sentry.init({
-  dsn: "https://fb777e82b17dddd864b8b78222cac004@o4510646353920000.ingest.de.sentry.io/4510646396321872",
-  integrations: [
-    Sentry.browserTracingIntegration(),
-    Sentry.replayIntegration(),
-  ],
-  // Performance Monitoring
-  tracesSampleRate: 1.0,
-  // Session Replay
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
-});
+// NOTE: Sentry for browser needs to be loaded via CDN or bundler, not require()
+// For now, frontend error tracking is disabled. Backend still tracks errors.
+// To enable: Add Sentry CDN script to index.html and use window.Sentry
 
 let totalEvents = 0;
 let todayEvents = 0;
@@ -60,14 +50,18 @@ const refreshCacheBtn = document.getElementById('refreshCacheBtn');
 
 // Initialize
 async function init() {
+  console.log('[DEBUG] init() started');
   try {
     updateStatus('Initializing...', 'disconnected');
 
     // Check if electronAPI is available
+    console.log('[DEBUG] Checking window.electronAPI...');
     if (!window.electronAPI) {
+      console.error('[DEBUG] electronAPI NOT available!');
       footerStatus.textContent = 'Error: electronAPI not available';
       return;
     }
+    console.log('[DEBUG] electronAPI is available');
 
     // Load speech synthesis voices (needed for text-to-speech)
     if ('speechSynthesis' in window) {
@@ -87,59 +81,73 @@ async function init() {
     const loadingOverlay = document.getElementById('loadingOverlay');
 
     // Wait for Backend Server to be ready (HTTP check)
+    // Wait for Backend Server to be ready (HTTP check)
+    // Non-blocking approach: Try for 5 seconds, then proceed to allow UI to load
     let backendReady = false;
     let retries = 0;
-    while (!backendReady && retries < 30) {
+    const MAX_WAIT_RETRIES = 5; // Wait max 5 seconds before showing UI
+
+    while (!backendReady && retries < MAX_WAIT_RETRIES) {
       try {
         const response = await fetch('http://localhost:5001/');
-        if (response.ok || response.status === 404) { // 404 is fine, means server is up
+        if (response.ok || response.status === 404) {
           backendReady = true;
           updateStatus('Backend connected', 'connected');
         }
       } catch (e) {
         retries++;
-        console.log(`Waiting for backend server... (${retries}/30)`);
+        console.log(`Waiting for backend server... (${retries}/${MAX_WAIT_RETRIES})`);
         updateStatus(`Starting backend service... (${retries})`, 'scanning');
         if (loadingOverlay) loadingOverlay.querySelector('div').textContent = `Starting Backend Service... (${retries})`;
         await new Promise(r => setTimeout(r, 1000));
       }
     }
 
+    // Even if not ready, we proceed so the user can see the logs interface
+    // Socket.io will handle the actual reconnection logic
     if (!backendReady) {
-      if (loadingOverlay) loadingOverlay.innerHTML = '<div style="color:red; text-align:center;">Failed to connect to backend service.<br>Please restart the application.</div>';
-      throw new Error('Backend service failed to start.');
+      console.warn('Backend not yet ready, proceeding to load UI to show logs...');
+      updateStatus('Backend starting...', 'offline');
     }
 
-    // Now get config via IPC
-    while (!config && retryCount < MAX_RETRIES) {
+    // Now get config via IPC (non-blocking - try 3 times then proceed)
+    const CONFIG_RETRIES = 3;
+    while (!config && retryCount < CONFIG_RETRIES) {
       try {
         config = await window.electronAPI.getConfig();
       } catch (e) {
         retryCount++;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.warn(`Config fetch failed (${retryCount}/${CONFIG_RETRIES}):`, e.message);
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    // Hide overlay
+    // Hide overlay regardless of config success - UI should always load
     if (loadingOverlay) loadingOverlay.style.display = 'none';
 
+    // If no config, use defaults and proceed anyway
     if (!config) {
-      throw new Error('Failed to connect to backend service after 30 seconds. Please restart.');
+      console.warn('Could not fetch config, using defaults. Socket.IO will handle connection.');
+      config = { ip: 'auto', port: 4370 }; // Default values
     }
 
     displayConfig(config);
+    console.log('[DEBUG] Config displayed, setting up Socket.IO...');
 
     // Setup Socket.IO connection
     setupSocketIO();
+    console.log('[DEBUG] Socket.IO setup complete');
 
     // Setup event listeners
     setupEventListeners();
+    console.log('[DEBUG] Event listeners setup complete');
 
     // Setup IPC listeners
     setupIPCListeners();
 
     // Setup sync status monitoring
     setupSyncMonitoring();
+    console.log('[DEBUG] All setup complete');
   } catch (error) {
     footerStatus.textContent = 'Error: ' + error.message;
   }
