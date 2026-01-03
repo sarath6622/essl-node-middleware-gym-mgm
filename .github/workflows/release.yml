@@ -34,6 +34,12 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
+      # Create the service account key file from the secret
+      - name: create service account key
+        run: |
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > config/serviceAccountKey.json
+        shell: bash
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
