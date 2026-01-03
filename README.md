@@ -55,17 +55,46 @@ To test the UI without a physical biometric device:
 2.  Set `useMockDevice: true`.
 3.  Restart the app. It will simulate device connection and attendance events.
 
-## Building for Production
+## Building & Deployment
 
-Create an optimized, native executable installer:
+### Automated Deployment (Recommended)
 
-```bash
-npm run tauri build
-# OR directly:
-npx tauri build
-```
+This project uses **GitHub Actions** for automated building and releasing.
 
-The installer will be located in `src-tauri/target/release/bundle/msi` (Windows) or `dmg` (macOS).
+1.  **Update Version**:
+    -   Edit `src-tauri/tauri.conf.json` -> `package.version` (e.g., `"1.0.5"`).
+    -   (Optional) Update `package.json` -> `version` to match.
+
+2.  **Trigger Release**:
+    Push a tag matching the version number:
+    ```bash
+    git commit -am "chore: bump version to 1.0.5"
+    git push
+    git tag v1.0.5
+    git push origin v1.0.5
+    ```
+
+3.  **Publish**:
+    -   Go to **GitHub Releases**.
+    -   Edit the Draft release and click **Publish**.
+    -   The app will automatically notify users of the update.
+
+### Manual Local Build
+
+To build the executable manually on your machine (e.g., for testing):
+
+1.  **Build Sidecar Binaries**:
+    The Node.js backend must be compiled into a standalone executable first.
+    ```bash
+    npm run build-binaries
+    ```
+
+2.  **Build Tauri App**:
+    ```bash
+    npm run tauri build
+    ```
+
+The installer will be located in `src-tauri/target/release/bundle/`.
 
 ## Architecture
 

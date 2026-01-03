@@ -1,5 +1,19 @@
 // Renderer Process JavaScript
 // UI logic and event handling
+const Sentry = require('@sentry/browser');
+
+Sentry.init({
+  dsn: "https://fb777e82b17dddd864b8b78222cac004@o4510646353920000.ingest.de.sentry.io/4510646396321872",
+  integrations: [
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0,
+  // Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1.0,
+});
 
 let totalEvents = 0;
 let todayEvents = 0;
@@ -79,8 +93,8 @@ async function init() {
       try {
         const response = await fetch('http://localhost:5001/');
         if (response.ok || response.status === 404) { // 404 is fine, means server is up
-           backendReady = true;
-           updateStatus('Backend connected', 'connected');
+          backendReady = true;
+          updateStatus('Backend connected', 'connected');
         }
       } catch (e) {
         retries++;
@@ -92,14 +106,14 @@ async function init() {
     }
 
     if (!backendReady) {
-       if (loadingOverlay) loadingOverlay.innerHTML = '<div style="color:red; text-align:center;">Failed to connect to backend service.<br>Please restart the application.</div>';
-       throw new Error('Backend service failed to start.');
+      if (loadingOverlay) loadingOverlay.innerHTML = '<div style="color:red; text-align:center;">Failed to connect to backend service.<br>Please restart the application.</div>';
+      throw new Error('Backend service failed to start.');
     }
 
     // Now get config via IPC
     while (!config && retryCount < MAX_RETRIES) {
       try {
-        config = await window.electronAPI.getConfig(); 
+        config = await window.electronAPI.getConfig();
       } catch (e) {
         retryCount++;
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -270,7 +284,7 @@ function setupSocketIO() {
 
     // Receive logs via socket (Sidecar mode)
     socket.on('log-message', (logData) => {
-        addLogMessage(logData);
+      addLogMessage(logData);
     });
 
   } catch (error) {
