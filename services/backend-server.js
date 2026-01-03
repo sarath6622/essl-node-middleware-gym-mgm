@@ -170,6 +170,16 @@ async function startServer() {
       throw new Error("My first Sentry error!");
     });
 
+    // Serve Offline Data Statically (Photos)
+    // Resolving the path same as offlineStorage.js
+    const appDataPath = process.env.APPDATA ||
+      (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : '/var/local');
+    const storageDir = path.join(appDataPath, 'ZK-Attendance', 'offline-data');
+
+    // Mount /static to the offline data directory
+    // This allows access to photos via http://localhost:5001/static/photos/USER_ID.jpg
+    app.use('/static', express.static(storageDir));
+
     app.use('/', apiRoutes);
     app.use('/users', userManagementRoutes);
 
