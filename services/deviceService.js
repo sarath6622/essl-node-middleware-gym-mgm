@@ -212,7 +212,6 @@ async function processAndSaveRecord(rawRecord, source, io) {
     attendanceRecord = {
       userId: `unknown_${biometricId}`,
       name: `Unknown User (ID: ${biometricId})`,
-      profileImageUrl: "",
       biometricDeviceId: biometricId,
       checkInTime: timestamp,
       checkOutTime: null,
@@ -238,7 +237,6 @@ async function processAndSaveRecord(rawRecord, source, io) {
   attendanceRecord = {
     userId: userDetails.id, // Use the Firestore document ID as userId
     name: userDetails.name,
-    profileImageUrl: userDetails.profileImageUrl || "",
     biometricDeviceId: userDetails.biometricDeviceId,
     checkInTime: timestamp,
     checkOutTime: null,

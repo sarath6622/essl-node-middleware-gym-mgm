@@ -222,58 +222,6 @@ class OfflineStorageService {
     }
   }
 
-  /**
-   * Ensure user photo is saved to disk and return the relative path
-   * @param {string} userId - The user ID
-   * @param {string} base64Data - The base64 image data (with or without prefix)
-   * @returns {Promise<string|null>} - The relative path to the image or null on failure
-   */
-  async saveUserPhoto(userId, base64Data) {
-    try {
-      if (!userId || !base64Data) return null;
-
-      const photoDir = path.join(this.storageDir, 'photos');
-      await fs.ensureDir(photoDir);
-
-      // Strip prefix if present (e.g., "data:image/jpeg;base64,")
-      const base64Image = base64Data.split(';base64,').pop();
-      const buffer = Buffer.from(base64Image, 'base64');
-
-      const fileName = `${userId}.jpg`;
-      const filePath = path.join(photoDir, fileName);
-
-      await fs.writeFile(filePath, buffer);
-
-      // Return relative path for portability
-      return `photos/${fileName}`;
-    } catch (error) {
-      log('error', `Failed to save photo for user ${userId}: ${error.message}`);
-      return null;
-    }
-  }
-
-  /**
-   * Get user photo as base64 string (for compatibility)
-   * @param {string} relativePath - Relative path stored in user object
-   * @returns {Promise<string|null>} - Base64 string with prefix
-   */
-  async getUserPhoto(relativePath) {
-    try {
-      if (!relativePath) return null;
-
-      const filePath = path.join(this.storageDir, relativePath);
-
-      if (!await fs.pathExists(filePath)) {
-        return null;
-      }
-
-      const buffer = await fs.readFile(filePath);
-      return `data:image/jpeg;base64,${buffer.toString('base64')}`;
-    } catch (error) {
-      log('error', `Failed to read photo from ${relativePath}: ${error.message}`);
-      return null;
-    }
-  }
 
   /**
    * Get storage statistics
@@ -283,7 +231,6 @@ class OfflineStorageService {
       let pendingLines = 0;
       let batchCount = 0;
       let userCount = 0;
-      let photoCount = 0;
 
       if (await fs.pathExists(this.attendanceFile)) {
         // Just checking size might be faster than reading lines for stats
@@ -301,17 +248,10 @@ class OfflineStorageService {
         if (data && Array.isArray(data.users)) userCount = data.users.length;
       }
 
-      const photoDir = path.join(this.storageDir, 'photos');
-      if (await fs.pathExists(photoDir)) {
-        const files = await fs.readdir(photoDir);
-        photoCount = files.length;
-      }
-
       return {
         pendingSyncFiles: batchCount,
         estimatedPendingRecords: pendingLines + (batchCount * 50), // Rough guess
         cachedUsers: userCount,
-        cachedPhotos: photoCount,
         storageType: 'Log Rotation (Atomic)'
       };
     } catch (error) {

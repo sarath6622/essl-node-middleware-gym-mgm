@@ -753,32 +753,67 @@ function speakWelcome(userName, membershipStatus, membershipEndDate) {
     // Function to speak with loaded voices
     const speakMessage = () => {
       const utterance = new SpeechSynthesisUtterance(message);
-      utterance.rate = 0.95; // Slightly slower for more natural speech
-      utterance.pitch = 1.1; // Slightly higher pitch for female voice
-      utterance.volume = 1.0; // Full volume
 
-      // Select the most natural-sounding female voice
+      // Get available voices
       const voices = window.speechSynthesis.getVoices();
       console.log('Available voices:', voices.length);
 
-      // Priority order for natural female voices:
-      // 1. Microsoft voices (Zira, Aria - very natural on Windows)
-      // 2. Google voices (high quality)
-      // 3. Any voice with "Female" in the name
-      // 4. Default English voice
+      // Log all available voices for debugging
+      voices.forEach((v, i) => console.log(`Voice ${i}: ${v.name} (${v.lang})`));
+
+      // Priority order for natural voices (Windows-optimized):
+      // 1. Microsoft Neural/Online voices (Windows 10/11 - very natural)
+      // 2. Microsoft Aria, Jenny, Zira (high quality Windows voices)
+      // 3. Google voices (Chrome/Chromium)
+      // 4. macOS premium voices (Samantha, Karen)
+      // 5. Any English female voice
+      // 6. Any English voice
       const preferredVoice =
-        voices.find(v => v.lang.startsWith('en') && (v.name.includes('Zira') || v.name.includes('Aria'))) ||
+        // Windows Neural voices (most natural on Windows 10/11)
+        voices.find(v => v.lang.startsWith('en') && v.name.includes('Online') && v.name.includes('Natural')) ||
+        voices.find(v => v.lang.startsWith('en') && v.name.includes('Jenny')) ||
+        voices.find(v => v.lang.startsWith('en') && v.name.includes('Aria')) ||
+        // Standard Windows voices
+        voices.find(v => v.lang.startsWith('en') && v.name.includes('Zira')) ||
+        voices.find(v => v.lang.startsWith('en') && v.name.includes('Hazel')) ||
+        // Google Chrome voices
         voices.find(v => v.lang.startsWith('en') && v.name.includes('Google') && v.name.includes('US')) ||
+        // macOS premium voices
+        voices.find(v => v.lang.startsWith('en') && (v.name.includes('Samantha') || v.name.includes('Karen'))) ||
+        // Any female English voice
         voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female')) ||
-        voices.find(v => v.lang.startsWith('en') && !v.name.toLowerCase().includes('male')) ||
+        voices.find(v => v.lang.startsWith('en-US')) ||
         voices.find(v => v.lang.startsWith('en'));
 
       if (preferredVoice) {
         utterance.voice = preferredVoice;
         console.log('Using voice:', preferredVoice.name);
+
+        // Adjust speech parameters based on the selected voice for more natural sound
+        if (preferredVoice.name.includes('Online') || preferredVoice.name.includes('Natural')) {
+          // Neural voices - already natural, use closer to default settings
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+        } else if (preferredVoice.name.includes('Zira') || preferredVoice.name.includes('Hazel')) {
+          // Standard Windows voices - slow down and adjust pitch for warmer sound
+          utterance.rate = 0.9;
+          utterance.pitch = 1.05;
+        } else if (preferredVoice.name.includes('Google')) {
+          // Google voices - slightly slower
+          utterance.rate = 0.95;
+          utterance.pitch = 1.0;
+        } else {
+          // Default settings for other voices
+          utterance.rate = 0.92;
+          utterance.pitch = 1.0;
+        }
       } else {
         console.log('Using default voice');
+        utterance.rate = 0.9;
+        utterance.pitch = 1.0;
       }
+
+      utterance.volume = 1.0; // Full volume
 
       // Add event listeners for debugging
       utterance.onstart = () => console.log('Speech started');
@@ -966,11 +1001,7 @@ function addAttendanceEvent(data) {
   eventEl.innerHTML = `
     <div class="event-header">
       <div class="event-profile">
-        ${data.profileImageUrl
-      ? `<img src="${data.profileImageUrl}" alt="${userName}" class="event-profile-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-             <div class="event-profile-placeholder" style="display: none;">${initials}</div>`
-      : `<div class="event-profile-placeholder">${initials}</div>`
-    }
+        <div class="event-profile-placeholder">${initials}</div>
       </div>
       <div class="event-info">
         <div class="event-user">${userName}</div>

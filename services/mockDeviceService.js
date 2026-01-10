@@ -17,10 +17,9 @@ for (let i = 1; i <= 50; i++) {
   const lastName = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]; // Random last name
   const fullName = `${firstName} ${lastName}`;
   const userId = `MOCK-${i.toString().padStart(3, '0')}`;
-  
+
   MOCK_USERS[userId] = {
     name: fullName,
-    profileImageUrl: `https://i.pravatar.cc/150?u=${userId}`, // Unique avatar per user
     membershipPlanId: i % 3 === 0 ? "platinum_yearly" : (i % 2 === 0 ? "premium_monthly" : "basic_yearly"),
     membershipStatus: i % 10 === 0 ? "expired" : (i % 15 === 0 ? "pending" : "active") // Mostly active
   };
@@ -45,21 +44,20 @@ function startPolling(io) {
   if (mockPollingInterval) return;
 
   // Default to 15 seconds if not configured
-    const interval = DEVICE_CONFIG.mockInterval || 15000;
-    
-    log("info", `[MOCK] Starting mock attendance event polling (${interval/1000}-second intervals).`);
-    mockPollingInterval = setInterval(async () => {
+  const interval = DEVICE_CONFIG.mockInterval || 15000;
+
+  log("info", `[MOCK] Starting mock attendance event polling (${interval / 1000}-second intervals).`);
+  mockPollingInterval = setInterval(async () => {
     const mockUserIds = Object.keys(MOCK_USERS);
     const randomUserId = mockUserIds[Math.floor(Math.random() * mockUserIds.length)];
     const mockUserData = MOCK_USERS[randomUserId];
-    
+
     const now = new Date();
     const timestamp = now.toISOString();
 
     const attendanceRecord = {
       userId: randomUserId,
       name: mockUserData.name,
-      profileImageUrl: mockUserData.profileImageUrl,
       biometricDeviceId: "ESSL_MOCK_01",
       checkInTime: timestamp,
       checkOutTime: null,

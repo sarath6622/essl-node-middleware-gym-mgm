@@ -679,15 +679,7 @@ body {
   flex-shrink: 0;
 }
 
-.event-profile-image {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 3px solid var(--accent-primary);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-  background: var(--bg-secondary);
-}
+/* Profile image class removed - using initials placeholder only */
 
 .event-profile-placeholder {
   width: 80px;
