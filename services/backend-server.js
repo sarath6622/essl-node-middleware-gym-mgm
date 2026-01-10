@@ -3,19 +3,6 @@ const path = require('path');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
-const Sentry = require('@sentry/node');
-const { nodeProfilingIntegration } = require('@sentry/profiling-node');
-
-Sentry.init({
-  dsn: "https://fb777e82b17dddd864b8b78222cac004@o4510646353920000.ingest.de.sentry.io/4510646396321872",
-  integrations: [
-    nodeProfilingIntegration(),
-  ],
-  // Performance Monitoring
-  tracesSampleRate: 1.0, // Capture 100% of transactions for now
-  // Set sampling rate for profiling - this is relative to tracesSampleRate
-  profilesSampleRate: 1.0,
-});
 
 const log = require('../utils/logger');
 const { findFirstDevice } = require('../utils/networkScanner');
@@ -165,8 +152,6 @@ async function startServer() {
     app.set('io', io);
     app.set('deviceService', deviceService);
 
-    // Sentry v8+ (and v10) handling
-    // Request isolation is automated in newer SDKs via integrations
 
     app.use(cors()); // Enable CORS for all routes
     app.use(express.json());
@@ -187,10 +172,7 @@ async function startServer() {
       });
     });
 
-    // Sentry Debug Route
-    app.get("/debug-sentry", function mainHandler(req, res) {
-      throw new Error("My first Sentry error!");
-    });
+
 
     // Serve Offline Data Statically (Photos)
     // Resolving the path same as offlineStorage.js
@@ -205,8 +187,7 @@ async function startServer() {
     app.use('/', apiRoutes);
     app.use('/users', userManagementRoutes);
 
-    // Sentry Error Handler (v8/v9/v10 style)
-    Sentry.setupExpressErrorHandler(app);
+
 
     server = httpServer.listen(PORT, async () => {
       log('success', `🚀 Server started successfully on port ${PORT}`);

@@ -1,10 +1,6 @@
 // Renderer Process JavaScript
 // UI logic and event handling
 
-// NOTE: Sentry for browser needs to be loaded via CDN or bundler, not require()
-// For now, frontend error tracking is disabled. Backend still tracks errors.
-// To enable: Add Sentry CDN script to index.html and use window.Sentry
-
 let totalEvents = 0;
 let todayEvents = 0;
 let socket = null;
