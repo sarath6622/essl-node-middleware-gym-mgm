@@ -48,6 +48,189 @@ const syncDetails = document.getElementById('syncDetails');
 const forceSyncBtn = document.getElementById('forceSyncBtn');
 const refreshCacheBtn = document.getElementById('refreshCacheBtn');
 
+// Settings modal elements
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const settingsModalClose = document.getElementById('settingsModalClose');
+const settingsCancelBtn = document.getElementById('settingsCancelBtn');
+const settingsSaveBtn = document.getElementById('settingsSaveBtn');
+const connTypeWifi = document.getElementById('connTypeWifi');
+const connTypeWired = document.getElementById('connTypeWired');
+const staticIPGroup = document.getElementById('staticIPGroup');
+const staticPortGroup = document.getElementById('staticPortGroup');
+const staticIPInput = document.getElementById('staticIP');
+const staticPortInput = document.getElementById('staticPort');
+const settingsError = document.getElementById('settingsError');
+
+// Current settings state
+let currentSettings = {
+  connectionType: 'wifi',
+  staticIP: '',
+  staticPort: 4370
+};
+
+// =========================================
+// Settings Modal Functions
+// =========================================
+
+function openSettingsModal() {
+  loadSettings().then(() => {
+    settingsModal.classList.add('active');
+    updateConnectionTypeUI();
+  });
+}
+
+function closeSettingsModal() {
+  settingsModal.classList.remove('active');
+  hideSettingsError();
+}
+
+function updateConnectionTypeUI() {
+  const isWired = connTypeWired.checked;
+  staticIPGroup.style.display = isWired ? 'flex' : 'none';
+  staticPortGroup.style.display = isWired ? 'flex' : 'none';
+}
+
+function showSettingsError(message) {
+  settingsError.textContent = message;
+  settingsError.style.display = 'block';
+}
+
+function hideSettingsError() {
+  settingsError.style.display = 'none';
+}
+
+async function loadSettings() {
+  try {
+    const response = await fetch('http://localhost:5001/settings');
+    const data = await response.json();
+    if (data.success && data.settings) {
+      currentSettings = data.settings;
+
+      // Update form
+      if (currentSettings.connectionType === 'wired') {
+        connTypeWired.checked = true;
+      } else {
+        connTypeWifi.checked = true;
+      }
+      staticIPInput.value = currentSettings.staticIP || '';
+      staticPortInput.value = currentSettings.staticPort || 4370;
+    }
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    // Use defaults
+    connTypeWifi.checked = true;
+  }
+}
+
+async function saveSettings() {
+  hideSettingsError();
+
+  const connectionType = connTypeWired.checked ? 'wired' : 'wifi';
+  const staticIP = staticIPInput.value.trim();
+  const staticPort = parseInt(staticPortInput.value, 10) || 4370;
+
+  // Validate
+  if (connectionType === 'wired' && !staticIP) {
+    showSettingsError('Please enter a valid IP address for wired connection.');
+    staticIPInput.focus();
+    return;
+  }
+
+  // Validate IP format
+  if (connectionType === 'wired') {
+    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipRegex.test(staticIP)) {
+      showSettingsError('Invalid IP address format. Please use format like 192.168.1.74');
+      staticIPInput.focus();
+      return;
+    }
+  }
+
+  try {
+    settingsSaveBtn.disabled = true;
+    settingsSaveBtn.textContent = 'Saving...';
+
+    const response = await fetch('http://localhost:5001/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectionType, staticIP, staticPort })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      currentSettings = data.settings;
+      closeSettingsModal();
+
+      // Show success message in logs
+      addLogEntry('success', `Settings saved: ${connectionType === 'wired' ? `Wired (${staticIP}:${staticPort})` : 'WiFi Auto-Scan'}`);
+
+      // Trigger reconnection
+      if (data.reconnectRequired) {
+        addLogEntry('info', 'Reconnecting with new settings...');
+        updateStatus('Reconnecting...', 'connecting');
+
+        // Wait a moment then trigger reconnect
+        setTimeout(async () => {
+          try {
+            const reconnectResponse = await fetch('http://localhost:5001/reconnect');
+            const reconnectData = await reconnectResponse.json();
+            if (reconnectData.success) {
+              addLogEntry('success', 'Connected to device');
+            }
+          } catch (err) {
+            addLogEntry('error', 'Reconnection failed: ' + err.message);
+          }
+        }, 1000);
+      }
+    } else {
+      showSettingsError(data.error || 'Failed to save settings');
+    }
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    showSettingsError('Failed to save settings. Please try again.');
+  } finally {
+    settingsSaveBtn.disabled = false;
+    settingsSaveBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+        <polyline points="17 21 17 13 7 13 7 21"/>
+        <polyline points="7 3 7 8 15 8"/>
+      </svg>
+      Save & Apply
+    `;
+  }
+}
+
+// Settings event listeners
+if (settingsBtn) {
+  settingsBtn.addEventListener('click', openSettingsModal);
+}
+if (settingsModalClose) {
+  settingsModalClose.addEventListener('click', closeSettingsModal);
+}
+if (settingsCancelBtn) {
+  settingsCancelBtn.addEventListener('click', closeSettingsModal);
+}
+if (settingsSaveBtn) {
+  settingsSaveBtn.addEventListener('click', saveSettings);
+}
+if (connTypeWifi) {
+  connTypeWifi.addEventListener('change', updateConnectionTypeUI);
+}
+if (connTypeWired) {
+  connTypeWired.addEventListener('change', updateConnectionTypeUI);
+}
+// Close modal on outside click
+if (settingsModal) {
+  settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) {
+      closeSettingsModal();
+    }
+  });
+}
+
 // Initialize
 async function init() {
   console.log('[DEBUG] init() started');

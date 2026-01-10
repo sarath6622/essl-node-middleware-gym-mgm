@@ -26,9 +26,18 @@ const { initializeMemberEnrollmentListener } = require('../services/memberEnroll
 const { prewarmCache } = require('../services/userService');
 const syncService = require('../services/syncService');
 const DEVICE_CONFIG = require('../config/deviceConfig');
+const { getSettings, applySettingsToConfig } = require('../config/userSettings');
 
 // Environment Setup
 const PORT = process.env.PORT || 5001;
+
+// Load and apply user settings at startup
+try {
+  const userSettings = getSettings();
+  applySettingsToConfig(userSettings, DEVICE_CONFIG);
+} catch (settingsErr) {
+  log('warning', `Failed to load user settings: ${settingsErr.message}. Using defaults.`);
+}
 
 // Log startup
 log('info', '🚀 Starting Backend Server (Sidecar Mode)...');

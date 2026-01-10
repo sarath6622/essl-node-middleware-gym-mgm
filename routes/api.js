@@ -3,6 +3,7 @@ const log = require("../utils/logger");
 const { scanForDevices } = require("../utils/networkScanner");
 const DEVICE_CONFIG = require("../config/deviceConfig");
 const { createRateLimiter } = require("../middleware/rateLimiter");
+const { getSettings, saveSettings, applySettingsToConfig } = require("../config/userSettings");
 
 const router = express.Router();
 
@@ -19,6 +20,69 @@ const strictLimiter = createRateLimiter("strict");   // 10 req/min for expensive
 const looseLimiter = createRateLimiter("loose");     // 120 req/min for lightweight ops
 
 router.use(getServices);
+
+// ============================================
+// User Settings Endpoints
+// ============================================
+
+// Get current user settings
+router.get("/settings", looseLimiter, (req, res) => {
+  try {
+    const settings = getSettings();
+    res.json({ success: true, settings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Save user settings and optionally reconnect
+router.post("/settings", strictLimiter, async (req, res) => {
+  try {
+    const { connectionType, staticIP, staticPort } = req.body;
+
+    // Validate
+    if (!connectionType || !['wifi', 'wired'].includes(connectionType)) {
+      return res.status(400).json({ success: false, error: "Invalid connection type" });
+    }
+
+    if (connectionType === 'wired' && !staticIP) {
+      return res.status(400).json({ success: false, error: "Static IP is required for wired connection" });
+    }
+
+    // Save settings
+    const newSettings = {
+      connectionType,
+      staticIP: staticIP || '',
+      staticPort: parseInt(staticPort, 10) || 4370
+    };
+
+    saveSettings(newSettings);
+
+    // Apply to device config
+    applySettingsToConfig(newSettings, DEVICE_CONFIG);
+
+    // Disconnect current connection
+    if (req.deviceService.isConnected && req.deviceService.isConnected()) {
+      log("info", "📴 Disconnecting from current device before applying new settings...");
+      await req.deviceService.disconnectFromDevice();
+    }
+
+    // Emit event to notify clients
+    if (req.io) {
+      req.io.emit("settings_updated", newSettings);
+    }
+
+    res.json({
+      success: true,
+      message: "Settings saved successfully",
+      settings: newSettings,
+      reconnectRequired: true
+    });
+  } catch (error) {
+    log("error", `Failed to save settings: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 router.get("/health", looseLimiter, (req, res) => {
   res.json({
@@ -59,7 +123,7 @@ router.post("/device/connect", strictLimiter, async (req, res) => {
   }
 
   log("info", `Manual connection request to ${ip}`);
-  
+
   // Update config
   DEVICE_CONFIG.ip = ip;
 
@@ -70,16 +134,16 @@ router.post("/device/connect", strictLimiter, async (req, res) => {
     }
 
     const linked = await req.deviceService.connectToDevice(req.io);
-    
+
     if (linked && !DEVICE_CONFIG.useMockDevice) {
-       // Initialize Firebase listener
-       const { initializeMemberEnrollmentListener } = require("../services/memberEnrollmentService");
-       initializeMemberEnrollmentListener(req.deviceService);
-       
-       // Start polling fallback
-       setTimeout(() => {
-         req.deviceService.startPolling(req.io);
-       }, 10000);
+      // Initialize Firebase listener
+      const { initializeMemberEnrollmentListener } = require("../services/memberEnrollmentService");
+      initializeMemberEnrollmentListener(req.deviceService);
+
+      // Start polling fallback
+      setTimeout(() => {
+        req.deviceService.startPolling(req.io);
+      }, 10000);
     }
 
     res.json({ success: linked, connected: linked });
